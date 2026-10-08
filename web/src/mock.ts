@@ -537,6 +537,14 @@ const usageSessions: UsageSession[] = sessionSpecs.map((x, i) => {
 
 function usage(): Usage {
   const week = addTotals(usageDays.slice(-7));
+  const all = addTotals(usageDays);
+  // Older history than the 14-day chart: scale up so 30 days / YTD / all time look plausible.
+  const scaled = (k: number) => ({
+    ...all,
+    input: Math.round(all.input * k), output: Math.round(all.output * k), cacheCreation: Math.round(all.cacheCreation * k),
+    cacheRead: Math.round(all.cacheRead * k), total: Math.round(all.total * k), messages: Math.round(all.messages * k),
+    sessions: Math.round(all.sessions * k),
+  });
   const projectShares: [string, number][] = [
     ['claudehub', 0.41], ['budget-app', 0.22], ['bets-tracker', 0.14], ['budget-android', 0.09],
     ['league-history', 0.06], ['Projects', 0.04], ['scratch-notes', 0.03], ['bracketeer', 0.01],
@@ -560,6 +568,10 @@ function usage(): Usage {
       : null,
     today: usageDays[13],
     week,
+    month: scaled(2.1),
+    year: scaled(9.4),
+    allTime: scaled(11.8),
+    trackedSince: new Date(NOW - 260 * DAY).toISOString().slice(0, 10),
     days: usageDays,
     byModel: [
       { model: 'claude-opus-5-5', total: Math.round(week.total * 0.74) },

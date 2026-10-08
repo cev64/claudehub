@@ -246,14 +246,70 @@ function readCaptured(sessionId: string): Captured | null {
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
+// ---------------------------------------------------------------------------------------------
+// per-day ledger: keeps totals after Claude Code prunes old transcripts
+
+interface LedgerDay { input: number; output: number; cacheCreation: number; cacheRead: number; total: number; messages: number; sessions: string[] }
+interface Ledger { v: 1; days: Record<string, LedgerDay> }
+
+const LEDGER_FILE = 'usage-days.json';
+let ledger: Ledger | null = null;
+
+function loadLedger(): Ledger {
+  if (!ledger) {
+    const stored = readJson<Ledger>(LEDGER_FILE);
+    ledger = stored?.v === 1 && stored.days ? stored : { v: 1, days: {} };
+  }
+  return ledger;
+}
+
+/**
+ * Fold freshly computed days into the ledger. A day's tokens only ever grow, so a smaller
+ * computed total means some of its transcripts were deleted: keep what was stored.
+ */
+function mergeLedger(computed: Map<string, Bucket>): Ledger {
+  const l = loadLedger();
+  let changed = false;
+  for (const [date, b] of computed) {
+    if (b.t.messages === 0) continue;
+    const cur = l.days[date];
+    if (cur && cur.total > b.t.total) continue;
+    if (cur && cur.total === b.t.total && cur.messages === b.t.messages && cur.sessions.length === b.ids.size) continue;
+    const { input, output, cacheCreation, cacheRead, total, messages } = b.t;
+    l.days[date] = { input, output, cacheCreation, cacheRead, total, messages, sessions: [...b.ids] };
+    changed = true;
+  }
+  if (changed) writeJson(LEDGER_FILE, l);
+  return l;
+}
+
+function sumDays(l: Ledger, keep: (date: string) => boolean): TokenTotals {
+  const t = emptyTotals();
+  const ids = new Set<string>();
+  for (const [date, d] of Object.entries(l.days)) {
+    if (!keep(date)) continue;
+    t.input += d.input;
+    t.output += d.output;
+    t.cacheCreation += d.cacheCreation;
+    t.cacheRead += d.cacheRead;
+    t.total += d.total;
+    t.messages += d.messages;
+    for (const s of d.sessions) ids.add(s);
+  }
+  t.sessions = ids.size;
+  return t;
+}
+
 async function computeUsage(projects: Project[]): Promise<Usage> {
   const now = new Date();
   const keys14 = lastDayKeys(SCAN_DAYS, now);
   const keys7 = new Set(keys14.slice(-7));
+  const keys30 = new Set(lastDayKeys(30, now));
   const today = keys14[keys14.length - 1];
-  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (SCAN_DAYS - 1)).getTime();
+  const yearStart = `${now.getFullYear()}-01-01`;
 
-  const files = await scanTranscripts(cutoff);
+  // Every transcript Claude Code still keeps (parsed files are cached by mtime + size).
+  const files = await scanTranscripts(0);
 
   // Group files per session; main transcript first so its title/cwd win.
   const bySession = new Map<string, FileParse[]>();
@@ -265,9 +321,7 @@ async function computeUsage(projects: Project[]): Promise<Usage> {
   // Oldest session first so a resumed session that replays old messages does not claim them.
   const ordered = [...bySession.entries()].sort((a, b) => (a[1][0].firstTs ?? Infinity) - (b[1][0].firstTs ?? Infinity));
 
-  const dayB = new Map<string, Bucket>(keys14.map((k) => [k, bucket()]));
-  const todayB = bucket();
-  const weekB = bucket();
+  const dayB = new Map<string, Bucket>();
   const modelTotals = new Map<string, number>();
   const projTotals = new Map<string, { projectId: string | null; name: string; total: number }>();
   const claimed = new Set<string>();
@@ -293,12 +347,10 @@ async function computeUsage(projects: Project[]): Promise<Usage> {
         add(sb, m, sessionId);
         if (m.model && m.ts >= modelTs && !m.side) { model = m.model; modelTs = m.ts; }
         const key = dayKey(new Date(m.ts));
-        const db = dayB.get(key);
-        if (!db) continue;
+        let db = dayB.get(key);
+        if (!db) dayB.set(key, (db = bucket()));
         add(db, m, sessionId);
-        if (key === today) add(todayB, m, sessionId);
         if (keys7.has(key)) {
-          add(weekB, m, sessionId);
           const total = m.input + m.output + m.cc;
           if (m.model) modelTotals.set(m.model, (modelTotals.get(m.model) ?? 0) + total);
           const pk = proj?.id ?? `name:${projectName}`;
@@ -339,15 +391,21 @@ async function computeUsage(projects: Project[]): Promise<Usage> {
   }
 
   sessions.sort((a, b) => Date.parse(b.lastActivityAt) - Date.parse(a.lastActivityAt));
-  const days: UsageDay[] = keys14.map((date) => ({ date, ...done(dayB.get(date)!) }));
+  const l = mergeLedger(dayB);
+  const days: UsageDay[] = keys14.map((date) => ({ date, ...sumDays(l, (d) => d === date) }));
+  const tracked = Object.keys(l.days).sort();
 
   return {
     generatedAt: new Date().toISOString(),
     limits: readLimits(),
     statusline: statuslineState(),
     lastRateLimit: getLastRateLimit(),
-    today: done(todayB),
-    week: done(weekB),
+    today: sumDays(l, (d) => d === today),
+    week: sumDays(l, (d) => keys7.has(d)),
+    month: sumDays(l, (d) => keys30.has(d)),
+    year: sumDays(l, (d) => d >= yearStart && d <= today),
+    allTime: sumDays(l, () => true),
+    trackedSince: tracked[0] ?? null,
     days,
     byModel: [...modelTotals].map(([model, total]) => ({ model, total })).sort((a, b) => b.total - a.total),
     byProject: [...projTotals.values()].sort((a, b) => b.total - a.total).slice(0, 8),

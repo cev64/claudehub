@@ -347,7 +347,8 @@ svg.lucide { flex-shrink: 0; }
   max-width: 100%;
 }
 .seg.full { display: flex; width: 100%; }
-.seg.full .seg-opt { flex: 1; }
+.seg.full .seg-opt { flex: 1 1 0; min-width: 0; }
+.seg.full.sm .seg-opt { padding: 0 6px; }
 .seg-thumb {
   position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 999px;
   background: var(--thumb); box-shadow: var(--thumb-shadow);

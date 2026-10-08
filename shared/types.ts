@@ -278,7 +278,13 @@ export interface Usage {
   lastRateLimit: RateLimitNotice | null; // latest rate_limit_event seen in a ClaudeHub run
   today: TokenTotals;
   week: TokenTotals;            // last 7 days including today
+  month: TokenTotals;           // last 30 days including today
+  year: TokenTotals;            // since January 1 (local time)
+  allTime: TokenTotals;         // every day ClaudeHub has seen
+  trackedSince: string | null;  // YYYY-MM-DD of the oldest day with usage
   days: UsageDay[];             // last 14 days, oldest first
+  // Period totals come from ~/.claudehub/usage-days.json, a per-day ledger that keeps days after
+  // Claude Code deletes old transcripts (cleanupPeriodDays, 30 by default).
   byModel: { model: string; total: number }[];                       // last 7 days, desc
   byProject: { projectId: string | null; name: string; total: number }[]; // last 7 days, top 8
   sessions: UsageSession[];     // up to 30, most recent activity first

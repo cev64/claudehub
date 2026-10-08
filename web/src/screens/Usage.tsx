@@ -216,11 +216,21 @@ function SessionRow({ s, now }: { s: UsageSession; now: number }) {
 
 // ---------- Tokens ----------
 
-type Range = 'today' | 'week';
+type Range = 'today' | 'week' | 'month' | 'year' | 'allTime';
+const RANGES: { value: Range; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'week', label: '7d' },
+  { value: 'month', label: '30d' },
+  { value: 'year', label: 'YTD' },
+  { value: 'allTime', label: 'All' },
+];
 
 function Tokens({ u }: { u: Usage }) {
   const [range, setRange] = useState<Range>('today');
-  const t: TokenTotals = range === 'today' ? u.today : u.week;
+  const t: TokenTotals = u[range];
+  const since = u.trackedSince
+    ? new Date(`${u.trackedSince}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
   const bars = useMemo(() => u.days.map(d => ({ date: d.date, value: d.total })), [u.days]);
   const total14 = u.days.reduce((a, d) => a + d.total, 0);
 
@@ -228,9 +238,9 @@ function Tokens({ u }: { u: Usage }) {
     <section className="glass card tokens-card" aria-labelledby="tok-h">
       <div className="card-head">
         <h2 id="tok-h" className="card-title">Tokens</h2>
-        <Segmented<Range> size="sm" label="Range" value={range} onChange={setRange}
-          options={[{ value: 'today', label: 'Today' }, { value: 'week', label: '7 days' }]} />
+        {range === 'allTime' && since && <span className="meta">Since {since}</span>}
       </div>
+      <Segmented<Range> size="sm" full label="Range" value={range} onChange={setRange} options={RANGES} />
       <div className="token-strip">
         <Stat label="Total" value={t.total} format={tokens} />
         <Stat label="Output" value={t.output} format={tokens} />
