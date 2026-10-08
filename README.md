@@ -68,7 +68,20 @@ Then open `http://<mac-mini-tailscale-name>:4317` and paste the token in Setting
   proposes changes), *Edit files* (may edit files, but shell commands that need approval are
   denied), *Auto* (Claude Code's auto mode). Each run keeps its session, so you can continue it.
 - **Cloud**: runs `claude --cloud` in the project, which starts a Claude Code on the web session on
-  the GitHub repo and links to it. Use it for work that should end in a PR.
+  the GitHub repo and links to it. Use it for work that should end in a PR. Push your branch first,
+  because the cloud session clones what's on GitHub.
+
+The agent removes `ANTHROPIC_API_KEY` from Claude's environment so your subscription is always
+used. If a launchd-started `claude` can't reach the Keychain login, run `claude setup-token`
+and reinstall with `export CLAUDE_CODE_OAUTH_TOKEN=...` set. The Settings page shows whether
+Claude is logged in.
+
+### Optional: drive the Mac Mini from the Claude app
+
+Claude Code's Remote Control lets you start and steer sessions on the Mac Mini from claude.ai/code
+or the Claude phone app, with ClaudeHub showing the overall picture. Run `claude` once in your
+projects folder, log in, trust the folder and accept the Remote Control prompt. Then run
+`claude remote-control --name "Mac Mini"` in a terminal that stays open.
 
 ## Develop
 
