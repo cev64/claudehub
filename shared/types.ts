@@ -1,0 +1,233 @@
+// Shared API contract between the Mac agent (server/) and the dashboard (web/).
+// Every JSON response from /api/* uses these shapes. Dates are ISO 8601 strings.
+
+export type ProjectStatus = 'active' | 'idle' | 'stale';
+
+export interface LocalRepo {
+  path: string;                 // absolute path on the Mac
+  branch: string | null;        // null when detached
+  dirtyFiles: number;           // modified + staged tracked files
+  untrackedFiles: number;
+  ahead: number;                // commits not pushed to upstream
+  behind: number;               // commits on upstream not pulled
+  hasUpstream: boolean;
+  lastCommitAt: string | null;
+  lastCommitMessage: string | null;
+  commitsLast30: number;
+  hasClaudeMd: boolean;
+  remoteUrl: string | null;
+}
+
+export interface GithubRepo {
+  fullName: string;             // "cev64/claudehub"
+  url: string;
+  description: string | null;
+  private: boolean;
+  fork: boolean;
+  archived: boolean;
+  defaultBranch: string | null;
+  pushedAt: string | null;
+  openPRs: number;
+  openIssues: number;
+  stars: number;
+  language: string | null;
+  commitsLast30: number;        // on the default branch
+}
+
+export interface Project {
+  id: string;                   // github full name lowercased ("cev64/claudehub"), or "local:<folder>"
+  name: string;
+  description: string | null;
+  local: LocalRepo | null;      // null = only on GitHub (not cloned on the Mac)
+  github: GithubRepo | null;    // null = local only (no GitHub remote)
+  stack: string[];              // e.g. ["React", "Vite", "TypeScript", "Supabase"]
+  commitsByDay: number[];       // last 30 days, oldest first, local+GitHub de-duplicated by sha
+  commitsLast30: number;
+  activityScore: number;        // higher = more active; used to rank "most active"
+  lastActivityAt: string | null;
+  status: ProjectStatus;        // active: activity < 7d, idle: < 30d, stale: older
+}
+
+export interface CommitSummary {
+  sha: string;
+  message: string;              // first line
+  author: string;
+  date: string;
+}
+
+export interface ProjectDetail extends Project {
+  readmeExcerpt: string | null; // first ~600 chars of README, markdown stripped of images
+  claudeMdExcerpt: string | null;
+  recentCommits: CommitSummary[];
+  pulls: PullRequest[];         // open + recently closed PRs for this repo
+  jobs: Job[];                  // Claude runs for this project, newest first
+  changedFiles: { path: string; status: string }[]; // from git status, max 50
+}
+
+export type PrState = 'open' | 'closed' | 'merged';
+export type ChecksState = 'success' | 'failure' | 'pending' | null;
+
+export interface PullRequest {
+  id: string;                   // "<fullName>#<number>"
+  number: number;
+  title: string;
+  url: string;
+  repoFullName: string;
+  projectId: string;
+  state: PrState;
+  draft: boolean;
+  author: string;
+  isMine: boolean;
+  createdAt: string;
+  updatedAt: string;
+  mergedAt: string | null;
+  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
+  checks: ChecksState;
+  additions: number;
+  deletions: number;
+  headRef: string;
+}
+
+export type SuggestionKind =
+  | 'uncommitted' | 'unpushed' | 'behind' | 'stale-pr' | 'pr-ready' | 'ci-failing'
+  | 'not-cloned' | 'no-claude-md' | 'stale-project' | 'ai';
+
+export type SuggestionAction =
+  | { type: 'prompt'; prompt: string; mode: JobMode; permission: PermissionLevel }
+  | { type: 'project-action'; action: ProjectAction }
+  | { type: 'link'; url: string };
+
+export interface Suggestion {
+  id: string;
+  kind: SuggestionKind;
+  projectId: string | null;
+  projectName: string | null;
+  title: string;                // short, noun-first ("3 uncommitted files")
+  detail: string;               // one quiet line
+  priority: 1 | 2 | 3;          // 1 = highest
+  action: SuggestionAction | null;
+  source: 'rules' | 'claude';
+}
+
+export interface DayCount { date: string; commits: number } // date = YYYY-MM-DD (local time)
+
+export interface OverviewStats {
+  projects: number;
+  localRepos: number;
+  githubRepos: number;
+  localOnly: number;
+  notCloned: number;
+  openPRs: number;              // open PRs across my repos
+  prsAuthored: number;          // all-time PRs I opened (GitHub search total)
+  prsMerged30: number;          // my PRs merged in the last 30 days
+  commits30: number;
+  dirtyRepos: number;
+  runningJobs: number;
+}
+
+export interface Overview {
+  generatedAt: string;
+  stats: OverviewStats;
+  mostActive: Project | null;
+  topProjects: Project[];       // up to 5 by activityScore
+  activity: DayCount[];         // last 30 days, all projects
+  suggestions: Suggestion[];    // rules + cached Claude suggestions, sorted by priority
+  aiSuggestionsAt: string | null;
+}
+
+export type JobMode = 'local' | 'cloud';
+// local runs `claude -p` in the repo on the Mac; cloud runs `claude --cloud` (Claude Code on the web)
+export type PermissionLevel = 'plan' | 'acceptEdits' | 'auto';
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface JobEvent {
+  ts: string;
+  type: 'system' | 'text' | 'tool' | 'result' | 'error';
+  text: string;
+  tool?: string;
+}
+
+export interface Job {
+  id: string;
+  projectId: string | null;
+  projectName: string | null;
+  cwd: string;
+  prompt: string;
+  mode: JobMode;
+  permission: PermissionLevel;
+  model: string | null;
+  status: JobStatus;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  sessionId: string | null;     // Claude session id, usable to continue the conversation
+  cloudUrl: string | null;      // claude.ai/code link for cloud jobs
+  resultText: string | null;
+  error: string | null;
+  events?: JobEvent[];          // only on GET /api/jobs/:id
+}
+
+export interface NewJobRequest {
+  projectId: string | null;     // null = run in the projects folder root
+  prompt: string;
+  mode: JobMode;
+  permission: PermissionLevel;
+  model?: string | null;        // 'opus' | 'sonnet' | 'haiku' | full id; null = CLI default
+  resumeSessionId?: string | null;
+}
+
+export type ProjectAction =
+  | 'open-editor' | 'open-finder' | 'open-terminal' | 'fetch' | 'pull' | 'clone';
+
+export interface ActionResult { ok: boolean; message: string }
+
+export interface Settings {
+  projectsDir: string;          // e.g. /Users/charlie/Desktop/Projects
+  scanDepth: number;            // 1-3, how deep to look for git repos
+  editor: string;               // macOS app name for `open -a`, e.g. "Visual Studio Code", "Cursor"
+  refreshMinutes: number;       // background rescan interval
+  defaultModel: string | null;
+  githubUser: string | null;    // detected from the token
+}
+
+export interface HealthCheck { ok: boolean; detail: string }
+
+export interface Health {
+  ok: boolean;
+  version: string;
+  hostname: string;
+  checks: {
+    git: HealthCheck;
+    projectsDir: HealthCheck;
+    github: HealthCheck;        // token found + user login
+    claude: HealthCheck;        // CLI found + version
+  };
+  lastScanAt: string | null;
+  scanning: boolean;
+}
+
+// SSE on GET /api/jobs/:id/stream sends `data: <JSON>` lines of:
+export type JobStreamMessage =
+  | { kind: 'event'; event: JobEvent }
+  | { kind: 'status'; job: Job };
+
+/*
+REST endpoints (all JSON; when CLAUDEHUB_TOKEN is set, non-loopback requests need
+`Authorization: Bearer <token>` or `?token=` for SSE):
+
+GET  /api/health                      -> Health
+GET  /api/overview                    -> Overview
+GET  /api/projects                    -> Project[]
+GET  /api/projects/:id                -> ProjectDetail      (id is URL-encoded)
+POST /api/projects/:id/actions        body { action: ProjectAction } -> ActionResult
+GET  /api/pulls?state=open|all        -> PullRequest[]
+POST /api/refresh                     -> { ok: true }       (starts a rescan; poll /api/health.scanning)
+GET  /api/jobs                        -> Job[]              (newest first, no events)
+POST /api/jobs                        body NewJobRequest -> Job
+GET  /api/jobs/:id                    -> Job (with events)
+GET  /api/jobs/:id/stream             -> text/event-stream of JobStreamMessage
+POST /api/jobs/:id/cancel             -> Job
+POST /api/suggestions/ai              -> Suggestion[]       (asks Claude over the current overview; may take ~1 min)
+GET  /api/settings                    -> Settings
+PUT  /api/settings                    body Partial<Settings> -> Settings
+*/
