@@ -224,6 +224,71 @@ export interface Health {
   scanning: boolean;
 }
 
+// ---- Claude usage -----------------------------------------------------------
+// Plan limits come from Claude Code's status line JSON (`rate_limits`), captured by
+// scripts/statusline.mjs whenever an interactive Claude Code session runs on the Mac.
+// Token counts come from Claude Code transcripts in ~/.claude/projects/*/*.jsonl.
+
+export interface PlanLimit {
+  usedPercentage: number;       // 0-100
+  resetsAt: string | null;
+}
+
+export interface TokenTotals {
+  input: number;                // uncached input tokens
+  output: number;
+  cacheCreation: number;
+  cacheRead: number;
+  total: number;                // input + output + cacheCreation (cache reads shown separately)
+  sessions: number;
+  messages: number;             // assistant messages
+}
+
+export interface UsageDay extends TokenTotals { date: string } // YYYY-MM-DD local
+
+export interface UsageSession {
+  sessionId: string;
+  projectId: string | null;     // matched to a Project by cwd when possible
+  projectName: string;          // project name or cwd folder name
+  cwd: string | null;
+  model: string | null;         // last model used, e.g. "claude-opus-5-5"
+  startedAt: string | null;
+  lastActivityAt: string;
+  active: boolean;              // activity in the last 10 minutes
+  title: string | null;         // first user prompt, first line, max 120 chars
+  totals: TokenTotals;          // sessions = 1
+  contextTokens: number;        // last assistant message: input + cacheCreation + cacheRead
+  contextWindow: number;        // from status line if captured, else 1_000_000 or 200_000 by model
+  contextPercent: number;       // 0-100
+}
+
+export interface RateLimitNotice {
+  status: 'allowed' | 'allowed_warning' | 'rejected';
+  utilization: number | null;   // as reported, 0-100 or 0-1 normalised to 0-100
+  resetsAt: string | null;
+  at: string;
+}
+
+export interface Usage {
+  generatedAt: string;
+  limits: {
+    fiveHour: PlanLimit | null;
+    sevenDay: PlanLimit | null;
+    capturedAt: string | null;  // when the status line last reported them
+  };
+  statusline: {
+    installed: boolean;         // our capture script is the statusLine command in ~/.claude/settings.json
+    chained: string | null;     // the user's previous statusLine command, still run and shown
+  };
+  lastRateLimit: RateLimitNotice | null; // latest rate_limit_event seen in a ClaudeHub run
+  today: TokenTotals;
+  week: TokenTotals;            // last 7 days including today
+  days: UsageDay[];             // last 14 days, oldest first
+  byModel: { model: string; total: number }[];                       // last 7 days, desc
+  byProject: { projectId: string | null; name: string; total: number }[]; // last 7 days, top 8
+  sessions: UsageSession[];     // up to 30, most recent activity first
+}
+
 // SSE on GET /api/jobs/:id/stream sends `data: <JSON>` lines of:
 export type JobStreamMessage =
   | { kind: 'event'; event: JobEvent }
@@ -247,6 +312,8 @@ GET  /api/jobs/:id                    -> Job (with events)
 GET  /api/jobs/:id/stream             -> text/event-stream of JobStreamMessage
 POST /api/jobs/:id/cancel             -> Job
 POST /api/suggestions/ai              -> Suggestion[]       (asks Claude over the current overview; may take ~1 min)
+GET  /api/usage                       -> Usage
+POST /api/usage/statusline            body { enabled: boolean } -> ActionResult   (installs/removes the capture script)
 GET  /api/settings                    -> Settings
 PUT  /api/settings                    body Partial<Settings> -> Settings
 */
