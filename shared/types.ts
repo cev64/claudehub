@@ -181,6 +181,24 @@ export type ProjectAction =
 
 export interface ActionResult { ok: boolean; message: string }
 
+// Create a new project folder on the Mac (git init + README + first commit),
+// optionally a GitHub repo for it, and optionally start Claude in it right away.
+export interface NewProjectRequest {
+  name: string;                 // folder name: letters, digits, '.', '_', '-'
+  createGithubRepo: boolean;    // uses `gh repo create` (needs gh login)
+  privateRepo: boolean;
+  prompt?: string | null;       // if set, starts a local job in the new folder
+  permission?: PermissionLevel; // for that job, default 'auto'
+  model?: string | null;
+}
+
+export interface NewProjectResult {
+  ok: boolean;
+  message: string;
+  project: Project | null;
+  job: Job | null;
+}
+
 export interface Settings {
   projectsDir: string;          // e.g. /Users/charlie/Desktop/Projects
   scanDepth: number;            // 1-3, how deep to look for git repos
@@ -218,6 +236,7 @@ REST endpoints (all JSON; when CLAUDEHUB_TOKEN is set, non-loopback requests nee
 GET  /api/health                      -> Health
 GET  /api/overview                    -> Overview
 GET  /api/projects                    -> Project[]
+POST /api/projects                   body NewProjectRequest -> NewProjectResult
 GET  /api/projects/:id                -> ProjectDetail      (id is URL-encoded)
 POST /api/projects/:id/actions        body { action: ProjectAction } -> ActionResult
 GET  /api/pulls?state=open|all        -> PullRequest[]
