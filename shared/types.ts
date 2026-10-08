@@ -177,12 +177,10 @@ export type ProjectAction =
 
 export interface ActionResult { ok: boolean; message: string }
 
-// Create a new project folder on the Mac (git init + README + first commit),
-// optionally a GitHub repo for it, and optionally start Claude in it right away.
+// Create a new project folder on the Mac (git init + README + first commit; local only, no GitHub
+// repo), and optionally start Claude in it right away.
 export interface NewProjectRequest {
   name: string;                 // folder name: letters, digits, '.', '_', '-'
-  createGithubRepo: boolean;    // uses `gh repo create` (needs gh login)
-  privateRepo: boolean;
   prompt?: string | null;       // if set, starts a local job in the new folder
   permission?: PermissionLevel; // for that job, default 'auto'
   model?: string | null;

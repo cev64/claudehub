@@ -127,7 +127,6 @@ export function App() {
         open={newOpen}
         onClose={() => setNewOpen(false)}
         defaultModel={settings.data?.defaultModel}
-        githubReady={health.data?.checks.github.ok ?? true}
         onCreated={onCreated}
       />
       <Toasts />

@@ -16,7 +16,7 @@ These parts have never run against the real thing:
 | Permission flags | A local run doesn't fail right away on `--permission-prompts none` | `jobs.ts` `start()` (remove the flag if this CLI version rejects it) |
 | Edit / Auto runs | *Edit files* changes a file. *Auto* can run `npm test` or `swift build` | `jobs.ts` |
 | Actions | Open in editor / Finder / Terminal, Fetch, Pull, Clone all work | `server/src/actions.ts` |
-| New project | Creates the folder and, with GitHub on, `cev64/<name>`, then starts the run | `hub.ts` `createProject` |
+| New project | Creates a local folder with a first commit (no GitHub repo), then starts the run | `hub.ts` `createProject` |
 | Usage tokens | Usage shows today's and this week's tokens, and they roughly match Claude Code's `/usage` history | `server/src/usage.ts` (transcript parsing; the format is internal and may have changed) |
 | Usage capture | Usage → Turn on. `~/.claude/settings.json` gets the `statusline.mjs` command (with a backup in `~/.claudehub/backups/`), an existing status line still shows, and after one prompt in an interactive `claude` the 5-hour and weekly % match `/usage` | `scripts/statusline.mjs`, `usage.ts` |
 | Subagent tokens | Sessions that used subagents include their tokens (the code expects `<session>/subagents/*.jsonl`) | `usage.ts` |

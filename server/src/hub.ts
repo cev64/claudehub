@@ -15,7 +15,7 @@ import { JobManager } from './jobs.ts';
 import { claudeHealth } from './claude.ts';
 import { runProjectAction } from './actions.ts';
 import { getUsage, refreshStatuslineCommand, setStatusline } from './usage.ts';
-import { errMsg, truncate, findBinary, lastDayKeys, log, run, warn } from './util.ts';
+import { errMsg, truncate, lastDayKeys, log, run, warn } from './util.ts';
 
 const VERSION: string = (() => {
   try {
@@ -275,29 +275,8 @@ export class Hub {
       throw new HttpError(500, `Created ${dir} but git setup failed: ${errMsg(e)}`);
     }
 
-    let message = `Created ${name} in ${root}.`;
-    let ghOk = false;
-    if (req.createGithubRepo) {
-      const gh = findBinary('gh', ['/opt/homebrew/bin/gh', '/usr/local/bin/gh']);
-      if (!gh) {
-        message += ' GitHub step failed: gh is not installed (brew install gh, then gh auth login).';
-      } else {
-        const r = await run(gh, ['repo', 'create', name, req.privateRepo ? '--private' : '--public', '--source', '.', '--remote', 'origin', '--push'], {
-          cwd: dir,
-          timeoutMs: 120_000,
-        });
-        if (r.ok) {
-          ghOk = true;
-          message += ` Created the ${req.privateRepo ? 'private' : 'public'} GitHub repository and pushed.`;
-        } else {
-          const why = truncate((r.stderr || r.error || 'unknown error').trim().split('\n').slice(-2).join(' '), 240);
-          message += ` GitHub step failed: ${why}${/auth|login|token/i.test(why) ? ' (run: gh auth login)' : ''}`;
-        }
-      }
-    }
-
+    const message = `Created ${name} in ${root}.`;
     await this.rescanPath(dir);
-    if (ghOk) void this.refresh();
     const project = this.snapshot.projects.find((p) => p.local?.path === dir) ?? null;
 
     let job: Job | null = null;

@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import type { NewProjectResult, PermissionLevel } from '../../../shared/types';
 import { api, ApiError } from '../api';
 import { Sheet } from './Sheet';
-import { MODEL_OPTIONS, PERMISSION_OPTIONS, Segmented, Select, Switch } from './controls';
+import { MODEL_OPTIONS, PERMISSION_OPTIONS, Segmented, Select } from './controls';
 
 const NAME_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -10,19 +10,16 @@ export const NEW_PROJECT_EVENT = 'claudehub:new-project';
 export function openNewProject() { window.dispatchEvent(new Event(NEW_PROJECT_EVENT)); }
 
 export function NewProjectSheet({
-  open, onClose, defaultModel, githubReady, onCreated,
+  open, onClose, defaultModel, onCreated,
 }: {
   open: boolean;
   onClose: () => void;
   defaultModel: string | null | undefined;
-  githubReady: boolean;
   onCreated: (r: NewProjectResult) => void;
 }) {
   const uid = useId();
   const [name, setName] = useState('');
   const [touched, setTouched] = useState(false);
-  const [github, setGithub] = useState(githubReady);
-  const [priv, setPriv] = useState(true);
   const [prompt, setPrompt] = useState('');
   const [permission, setPermission] = useState<PermissionLevel>('auto');
   const [model, setModel] = useState(defaultModel ?? '');
@@ -31,9 +28,9 @@ export function NewProjectSheet({
 
   useEffect(() => {
     if (!open) return;
-    setName(''); setTouched(false); setGithub(githubReady); setPriv(true); setPrompt('');
+    setName(''); setTouched(false); setPrompt('');
     setPermission('auto'); setModel(defaultModel ?? ''); setError('');
-  }, [open, githubReady, defaultModel]);
+  }, [open, defaultModel]);
 
   const trimmed = name.trim();
   const valid = NAME_RE.test(trimmed);
@@ -47,8 +44,6 @@ export function NewProjectSheet({
     try {
       const r = await api.createProject({
         name: trimmed,
-        createGithubRepo: github,
-        privateRepo: github ? priv : true,
         prompt: prompt.trim() || null,
         permission,
         model: model || null,
@@ -81,10 +76,6 @@ export function NewProjectSheet({
             aria-describedby={`${uid}-ne`}
           />
           <span id={`${uid}-ne`} className="field-error">{nameError}</span>
-        </div>
-        <div className="stack" style={{ gap: 4 }}>
-          <Switch id={`${uid}-gh`} label="Create GitHub repo" checked={github} onChange={setGithub} />
-          {github && <Switch id={`${uid}-pv`} label="Private" checked={priv} onChange={setPriv} />}
         </div>
         <div className="field">
           <label className="label" htmlFor={`${uid}-p`}>What should Claude build?</label>

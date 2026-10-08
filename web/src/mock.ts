@@ -686,20 +686,15 @@ function createProject(req: NewProjectRequest): NewProjectResult {
     return { ok: false, message: `${name} already exists`, project: null, job: null };
   }
   const now = new Date().toISOString();
-  const gh = req.createGithubRepo ? {
-    fullName: `cev64/${name}`, url: `https://github.com/cev64/${name}`, description: null,
-    private: req.privateRepo, fork: false, archived: false, defaultBranch: 'main', pushedAt: now,
-    openPRs: 0, openIssues: 0, stars: 0, language: null, commitsLast30: 1,
-  } : null;
   const project: Project = {
-    id: gh ? gh.fullName.toLowerCase() : `local:${name}`,
+    id: `local:${name}`,
     name, description: null,
     local: {
       path: `${settings.projectsDir}/${name}`, branch: 'main', dirtyFiles: 0, untrackedFiles: 0, ahead: 0, behind: 0,
-      hasUpstream: !!gh, lastCommitAt: now, lastCommitMessage: 'Initial commit', commitsLast30: 1, hasClaudeMd: false,
-      remoteUrl: gh ? `git@github.com:${gh.fullName}.git` : null,
+      hasUpstream: false, lastCommitAt: now, lastCommitMessage: 'Initial commit', commitsLast30: 1, hasClaudeMd: false,
+      remoteUrl: null,
     },
-    github: gh,
+    github: null,
     stack: [],
     commitsByDay: [...Array(29).fill(0), 1],
     commitsLast30: 1,
@@ -715,6 +710,5 @@ function createProject(req: NewProjectRequest): NewProjectResult {
     ensureTicker();
     job = publicJob(j);
   }
-  const where = gh ? ` and ${gh.private ? 'a private' : 'a public'} GitHub repo` : '';
-  return { ok: true, message: `Created ${name}${where}`, project, job };
+  return { ok: true, message: `Created ${name}`, project, job };
 }
