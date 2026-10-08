@@ -3,8 +3,29 @@ import type { DayCount } from '../../../shared/types';
 import { num, shortDate, weekday } from '../format';
 import { useReducedMotion } from '../hooks';
 
-/** 30-day commits as bars, with a scrub hairline + glass tooltip. Plain SVG. */
+/** 30-day commits as bars. */
 export function ActivityChart({ data, height = 200 }: { data: DayCount[]; height?: number }) {
+  const bars = useMemo(() => data.map(d => ({ date: d.date, value: d.commits })), [data]);
+  const total = data.reduce((a, d) => a + d.commits, 0);
+  return (
+    <BarChart data={bars} height={height}
+      tip={v => `${num(v)} ${v === 1 ? 'commit' : 'commits'}`}
+      label={`Commits per day, last 30 days. ${num(total)} total.`} />
+  );
+}
+
+export interface BarDatum { date: string; value: number }
+
+/** Daily values as bars, with a scrub hairline + glass tooltip. Plain SVG. */
+export function BarChart({
+  data, height = 200, tip, label, axis = num,
+}: {
+  data: BarDatum[];
+  height?: number;
+  tip: (v: number) => string;     // tooltip value line
+  label: string;                  // accessible summary
+  axis?: (v: number) => string;   // y-axis tick labels
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState<number | null>(null);
   const [width, setWidth] = useState(640);
@@ -22,10 +43,11 @@ export function ActivityChart({ data, height = 200 }: { data: DayCount[]; height
     }
   };
 
-  const padL = 28, padR = 4, padT = 8, padB = 24;
+  const padR = 4, padT = 8, padB = 24;
   const n = data.length || 1;
-  const max = Math.max(4, ...data.map(d => d.commits));
+  const max = Math.max(4, ...data.map(d => d.value));
   const nice = niceMax(max);
+  const padL = Math.max(28, 10 + 7 * axis(nice).length);
   const plotW = Math.max(10, width - padL - padR);
   const plotH = height - padT - padB;
   const step = plotW / n;
@@ -45,14 +67,13 @@ export function ActivityChart({ data, height = 200 }: { data: DayCount[]; height
 
   const labelIdx = useMemo(() => {
     const idx = new Set<number>([0, n - 1]);
-    const every = width < 480 ? 10 : 7;
+    const every = n <= 14 ? (width < 360 ? 7 : 4) : width < 480 ? 10 : 7;
     for (let i = n - 1; i >= 0; i -= every) idx.add(i);
     // drop labels too close to the first one
     for (const i of [...idx]) if (i !== 0 && i < every * 0.6) idx.delete(i);
     return idx;
   }, [n, width]);
 
-  const total = data.reduce((a, d) => a + d.commits, 0);
   const a = active != null ? data[active] : null;
   const tipX = active != null ? padL + active * step + step / 2 : 0;
   const clampedTipX = Math.min(Math.max(tipX, 70), width - 70);
@@ -66,19 +87,19 @@ export function ActivityChart({ data, height = 200 }: { data: DayCount[]; height
       onPointerLeave={() => setActive(null)}
       onPointerUp={e => { if (e.pointerType !== 'mouse') setActive(null); }}
       role="img"
-      aria-label={`Commits per day, last 30 days. ${num(total)} total.`}
+      aria-label={label}
     >
       <svg height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
         {ticks.map(t => (
           <g key={t}>
             <line className="grid-line" x1={padL} x2={width - padR} y1={y(t)} y2={y(t)} />
-            <text className="axis-text" x={padL - 8} y={y(t) + 4} textAnchor="end">{num(t)}</text>
+            <text className="axis-text" x={padL - 8} y={y(t) + 4} textAnchor="end">{axis(t)}</text>
           </g>
         ))}
         <g className="bars">
           {data.map((d, i) => {
-            if (d.commits <= 0) return null;
-            const h = Math.max(2, plotH - (y(d.commits) - padT));
+            if (d.value <= 0) return null;
+            const h = Math.max(2, plotH - (y(d.value) - padT));
             const x = padL + i * step + gap / 2;
             return <path key={d.date} className={`bar${i === active ? ' on' : ''}`} d={roundTop(x, padT + plotH - h, barW, h, Math.min(4, barW / 2))} />;
           })}
@@ -96,7 +117,7 @@ export function ActivityChart({ data, height = 200 }: { data: DayCount[]; height
       {a && (
         <div className="tooltip glass-strong" style={{ left: clampedTipX, top: -8 }}>
           <span className="quiet">{weekday(a.date)}</span>
-          <b className="num">{num(a.commits)} {a.commits === 1 ? 'commit' : 'commits'}</b>
+          <b className="num">{tip(a.value)}</b>
         </div>
       )}
     </div>

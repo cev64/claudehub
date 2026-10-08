@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import {
-  Archive, ArrowDownToLine, ArrowUpFromLine, CircleX, Clock, Download, FileDiff, FileQuestion, GitMerge, Sparkles,
+  Archive, ArrowDownToLine, ArrowUpFromLine, CircleX, Clock, Download, FileDiff, FileQuestion, Gauge, GitMerge, Sparkles,
 } from 'lucide-react';
-import type { Health, Project, Suggestion, SuggestionKind } from '../../../shared/types';
+import type { Health, Project, Suggestion, SuggestionKind, Usage } from '../../../shared/types';
 import { api, ApiError } from '../api';
 import { href, navigate, useNow, useResource } from '../hooks';
 import { num, plural, relTime } from '../format';
 import { ActivityChart, Sparkline } from '../components/Charts';
-import { ErrorState, ICON, PageHead, projectStatus, Rolling, Skeleton, SkeletonRows, StatusWord } from '../components/bits';
+import { ErrorState, ICON, meterTone, PageHead, projectStatus, Rolling, Skeleton, SkeletonRows, StatusWord } from '../components/bits';
+import { useUsage } from './Usage';
 import { toast } from '../components/Toasts';
 import { runProjectAction, runSuggestion, suggestionLabel } from '../actions';
 
@@ -19,13 +20,15 @@ const KIND_ICON: Record<SuggestionKind, typeof Sparkles> = {
 
 export function OverviewScreen({ health }: { health: Health | undefined }) {
   const ov = useResource('overview', api.overview, 30_000);
+  const usage = useUsage();
   const now = useNow();
   const label = health?.hostname ?? 'Mac Mini';
+  const plan = <PlanLink u={usage.data} />;
 
   if (!ov.data) {
     return (
       <>
-        <PageHead label={label} title="Overview" />
+        <PageHead label={label} title="Overview">{plan}</PageHead>
         {ov.error ? <div className="glass card"><ErrorState error={ov.error} onRetry={ov.reload} /></div> : <OverviewSkeleton />}
       </>
     );
@@ -35,7 +38,7 @@ export function OverviewScreen({ health }: { health: Health | undefined }) {
 
   return (
     <>
-      <PageHead label={label} title="Overview" />
+      <PageHead label={label} title="Overview">{plan}</PageHead>
       <section className="tiles" aria-label="Stats">
         <Tile label="Projects" value={stats.projects} meta={`${num(stats.localRepos)} on Mac`} to={href('projects')} />
         <Tile label="Open PRs" value={stats.openPRs} meta={plural(stats.githubRepos, 'repo')} to={href('pulls')} />
@@ -69,6 +72,24 @@ export function OverviewScreen({ health }: { health: Health | undefined }) {
         <Suggestions list={suggestions} onChanged={ov.reload} />
       </div>
     </>
+  );
+}
+
+/** Compact plan limits ("5h 31% · wk 64%") linking to Usage. */
+function PlanLink({ u }: { u: Usage | undefined }) {
+  const l = u?.limits;
+  if (!l?.capturedAt || (!l.fiveHour && !l.sevenDay)) return null;
+  const parts = [
+    l.fiveHour ? `5h ${Math.round(l.fiveHour.usedPercentage)}%` : null,
+    l.sevenDay ? `wk ${Math.round(l.sevenDay.usedPercentage)}%` : null,
+  ].filter(Boolean).join(' · ');
+  const t = meterTone(Math.max(l.fiveHour?.usedPercentage ?? 0, l.sevenDay?.usedPercentage ?? 0));
+  return (
+    <a className="btn sm plan-link" href={href('usage')} aria-label={`Plan usage: ${parts}${t ? ', ' + t.word : ''}`}>
+      <Gauge {...ICON} size={16} />
+      <span className="num">{parts}</span>
+      {t && <StatusWord tone={t.tone} word={t.word} />}
+    </a>
   );
 }
 

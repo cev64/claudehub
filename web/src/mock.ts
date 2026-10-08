@@ -2,7 +2,7 @@
 // without the Mac. Add &offline=1 to simulate an unreachable agent.
 import type {
   ActionResult, DayCount, Health, Job, JobEvent, JobStreamMessage, NewJobRequest, NewProjectRequest, NewProjectResult, Overview, Project,
-  ProjectAction, ProjectDetail, PullRequest, Settings, Suggestion,
+  ProjectAction, ProjectDetail, PullRequest, Settings, Suggestion, TokenTotals, Usage, UsageDay, UsageSession,
 } from '../../shared/types';
 import { ApiError } from './api';
 
@@ -443,6 +443,123 @@ function health(): Health {
   };
 }
 
+// ---------- Usage ----------
+// ?mock=1&usage=empty: nothing captured yet and the status line script not installed.
+// ?mock=1&usage=high: both plan limits near or at the limit.
+
+const USAGE_VARIANT = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('usage') : null;
+const USAGE_EMPTY = USAGE_VARIANT === 'empty';
+const USAGE_HIGH = USAGE_VARIANT === 'high';
+let statusline: Usage['statusline'] = USAGE_EMPTY
+  ? { installed: false, chained: null }
+  : { installed: true, chained: 'npx -y ccstatusline@latest' };
+
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+function totals(total: number, seed: number, sessions: number): TokenTotals {
+  const r = rng(seed);
+  const output = Math.round(total * (0.05 + r() * 0.04));
+  const input = Math.round(total * (0.004 + r() * 0.004));
+  const cacheCreation = total - output - input;
+  return {
+    input, output, cacheCreation, total,
+    cacheRead: Math.round(total * (9 + r() * 5)),
+    sessions,
+    messages: Math.round(total / (9_000 + r() * 4_000)),
+  };
+}
+
+function addTotals(list: TokenTotals[]): TokenTotals {
+  const z: TokenTotals = { input: 0, output: 0, cacheCreation: 0, cacheRead: 0, total: 0, sessions: 0, messages: 0 };
+  for (const t of list) for (const k of Object.keys(z) as (keyof TokenTotals)[]) z[k] += t[k];
+  return z;
+}
+
+const usageDays: UsageDay[] = (() => {
+  const r = rng(1414);
+  return Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(NOW - (13 - i) * DAY);
+    const weekend = d.getDay() % 6 === 0;
+    const base = weekend ? 0.9e6 : 2.6e6;
+    const total = i === 13 ? 1_840_000 : r() < 0.08 ? 0 : Math.round(base * (0.45 + r() * 1.1) + i * 60_000);
+    const sessions = total ? Math.max(1, Math.round(total / 520_000)) : 0;
+    return { date: ymd(d), ...totals(total, 300 + i, sessions) };
+  });
+})();
+
+interface SessionSpec {
+  project: string; title: string | null; model: string; ago: number; ran: number; total: number; messages: number;
+  ctx: number; window: number;
+}
+
+const sessionSpecs: SessionSpec[] = [
+  { project: 'claudehub', title: 'Add a Usage screen with plan limits, sessions and tokens', model: 'claude-opus-5-5', ago: 1 * MIN, ran: 95 * MIN, total: 1_120_000, messages: 142, ctx: 870_000, window: 1_000_000 },
+  { project: 'budget-app', title: 'Fix the failing net worth chart test on #42', model: 'claude-sonnet-5', ago: 4 * MIN, ran: 22 * MIN, total: 318_000, messages: 42, ctx: 205_000, window: 1_000_000 },
+  { project: 'bets-tracker', title: 'Grade parlays with void legs', model: 'claude-opus-5-5', ago: 48 * MIN, ran: 40 * MIN, total: 540_000, messages: 77, ctx: 312_000, window: 1_000_000 },
+  { project: 'budget-android', title: null, model: 'claude-sonnet-5', ago: 5 * HOUR, ran: 18 * MIN, total: 210_000, messages: 31, ctx: 96_000, window: 200_000 },
+  { project: 'claudehub', title: 'Review the job runner queue for races', model: 'claude-opus-5-5', ago: 26 * HOUR, ran: 55 * MIN, total: 760_000, messages: 98, ctx: 455_000, window: 1_000_000 },
+  { project: 'league-history', title: 'Import the 2019 season standings', model: 'claude-sonnet-5', ago: 3 * DAY, ran: 12 * MIN, total: 96_000, messages: 18, ctx: 61_000, window: 200_000 },
+];
+
+const usageSessions: UsageSession[] = sessionSpecs.map((x, i) => {
+  const p = projects.find(q => q.name === x.project);
+  return {
+    sessionId: `9f1c${i}a2e-4b7d-4c1e-9a3f-${String(i).padStart(12, '0')}`,
+    projectId: p?.id ?? null,
+    projectName: x.project,
+    cwd: `${ROOT}/${x.project}`,
+    model: x.model,
+    startedAt: isoAt(x.ago + x.ran),
+    lastActivityAt: isoAt(x.ago),
+    active: x.ago < 10 * MIN,
+    title: x.title,
+    totals: { ...totals(x.total, 900 + i, 1), messages: x.messages },
+    contextTokens: x.ctx,
+    contextWindow: x.window,
+    contextPercent: Math.round((x.ctx / x.window) * 1000) / 10,
+  };
+});
+
+function usage(): Usage {
+  const week = addTotals(usageDays.slice(-7));
+  const projectShares: [string, number][] = [
+    ['claudehub', 0.41], ['budget-app', 0.22], ['bets-tracker', 0.14], ['budget-android', 0.09],
+    ['league-history', 0.06], ['Projects', 0.04], ['scratch-notes', 0.03], ['bracketeer', 0.01],
+  ];
+  const fiveReset = new Date(NOW + 2 * HOUR + 14 * MIN + 20_000);
+  const weekReset = new Date(NOW + 3 * DAY);
+  weekReset.setHours(9, 0, 0, 0);
+  const captured = !USAGE_EMPTY;
+  return {
+    generatedAt: new Date().toISOString(),
+    limits: captured
+      ? {
+          fiveHour: { usedPercentage: USAGE_HIGH ? 93 : 31, resetsAt: fiveReset.toISOString() },
+          sevenDay: { usedPercentage: USAGE_HIGH ? 78 : 64, resetsAt: weekReset.toISOString() },
+          capturedAt: isoAt(4 * MIN),
+        }
+      : { fiveHour: null, sevenDay: null, capturedAt: null },
+    statusline,
+    lastRateLimit: captured
+      ? { status: 'allowed_warning', utilization: 78, resetsAt: weekReset.toISOString(), at: isoAt(2 * MIN) }
+      : null,
+    today: usageDays[13],
+    week,
+    days: usageDays,
+    byModel: [
+      { model: 'claude-opus-5-5', total: Math.round(week.total * 0.74) },
+      { model: 'claude-sonnet-5', total: Math.round(week.total * 0.23) },
+      { model: 'claude-haiku-4-5', total: Math.round(week.total * 0.03) },
+    ],
+    byProject: projectShares.map(([name, share]) => ({
+      projectId: projects.find(q => q.name === name)?.id ?? null,
+      name,
+      total: Math.round(week.total * share),
+    })),
+    sessions: usageSessions,
+  };
+}
+
 // ---------- Router ----------
 
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -524,6 +641,14 @@ export async function mockRequest(method: string, path: string, body: unknown): 
         },
       ];
       return aiSuggestions;
+    }
+    case 'GET usage': return usage();
+    case 'POST usage': {
+      const enabled = !!(body as { enabled?: boolean })?.enabled;
+      statusline = enabled
+        ? { installed: true, chained: statusline.chained }
+        : { installed: false, chained: statusline.chained };
+      return { ok: true, message: enabled ? 'Usage capture on' : 'Usage capture off' } satisfies ActionResult;
     }
     case 'GET settings': return settings;
     case 'PUT settings': {

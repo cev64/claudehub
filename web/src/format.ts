@@ -81,3 +81,49 @@ export function firstLine(text: string, max = 120): string {
 export function tildePath(p: string): string {
   return p.replace(/^\/Users\/[^/]+/, '~');
 }
+
+/** Token counts: 950, 1.2k, 12.4k, 205k, 1.2M, 12.4M, 1.1B */
+export function tokens(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return '0';
+  const a = Math.abs(n);
+  if (a < 1000) return num(n);
+  const units: [number, string][] = [[1e3, 'k'], [1e6, 'M'], [1e9, 'B']];
+  let i = a >= 1e9 ? 2 : a >= 1e6 ? 1 : 0;
+  // 999,960 would round to "1000k": carry to the next unit.
+  if (i < 2 && Math.round(a / units[i][0]) >= 1000) i++;
+  const v = a / units[i][0];
+  const s = v < 100 ? v.toFixed(1).replace(/\.0$/, '') : Math.round(v).toString();
+  return (n < 0 ? MINUS : '') + s + units[i][1];
+}
+
+/** "Thu 9:00 AM" (or "9:00 AM" when it's today). */
+export function dayTime(iso: string, now = Date.now()): string {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (d.toDateString() === new Date(now).toDateString()) return time;
+  return `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${time}`;
+}
+
+/** "Resets in 2h 14m" within a day, "Resets Thu 9:00 AM" beyond, "Reset 3:40 PM" once passed. */
+export function resetsIn(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '';
+  const diff = t - now;
+  if (diff <= 0) return `Reset ${dayTime(iso, now)}`;
+  if (diff > 24 * 3600_000) return `Resets ${dayTime(iso, now)}`;
+  const m = Math.max(1, Math.floor(diff / 60_000));
+  const h = Math.floor(m / 60);
+  return `Resets in ${h ? `${h}h ${m % 60}m` : `${m}m`}`;
+}
+
+/** "claude-opus-5-5" -> "Opus 5.5", "claude-sonnet-4-5-20250929" -> "Sonnet 4.5", "claude-3-5-haiku-20241022" -> "Haiku 3.5" */
+export function modelName(id: string | null | undefined): string {
+  if (!id) return 'Unknown model';
+  const clean = id.replace(/\[.*?\]$/, '').replace(/^(us\.|eu\.)?anthropic\./, '').replace(/^claude-/, '').replace(/-\d{8}(-v\d+(:\d+)?)?$/, '');
+  const fam = clean.match(/(opus|sonnet|haiku|fable)/i);
+  if (!fam) return id;
+  const family = fam[1][0].toUpperCase() + fam[1].slice(1).toLowerCase();
+  const version = clean.replace(fam[1], '').split('-').filter(p => /^\d{1,2}$/.test(p)).join('.');
+  return version ? `${family} ${version}` : family;
+}

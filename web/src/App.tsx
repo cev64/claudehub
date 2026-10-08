@@ -10,12 +10,14 @@ import { ProjectsScreen } from './screens/Projects';
 import { PullsScreen } from './screens/Pulls';
 import { ClaudeScreen } from './screens/Claude';
 import { SettingsScreen } from './screens/Settings';
+import { UsageScreen } from './screens/Usage';
 
 const TITLES: Record<Screen, string> = {
   overview: 'Overview',
   projects: 'Projects',
   pulls: 'Pull requests',
   claude: 'Claude',
+  usage: 'Usage',
   settings: 'Settings',
 };
 
@@ -115,6 +117,7 @@ export function App() {
           {s === 'projects' && <ProjectsScreen route={route} settings={settings.data} />}
           {s === 'pulls' && <PullsScreen route={route} />}
           {s === 'claude' && <ClaudeScreen route={route} settings={settings.data} />}
+          {s === 'usage' && <UsageScreen />}
           {s === 'settings' && <SettingsScreen settings={settings} health={health} />}
           {MOCK && <p className="meta" style={{ textAlign: 'center', margin: '24px 0 0' }}>Sample data</p>}
         </main>

@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
-import { FolderGit2, GitPullRequest, LayoutGrid, RefreshCw, Settings as SettingsIcon, SquareTerminal } from 'lucide-react';
+import { FolderGit2, Gauge, GitPullRequest, LayoutGrid, RefreshCw, Settings as SettingsIcon, SquareTerminal } from 'lucide-react';
 import type { Health } from '../../../shared/types';
 import { href, type Screen } from '../hooks';
 import { relTime } from '../format';
 import { ICON } from './bits';
 
-export const NAV: { screen: Screen; label: string; short: string; Icon: typeof LayoutGrid }[] = [
-  { screen: 'overview', label: 'Overview', short: 'Overview', Icon: LayoutGrid },
+// `bar` is the bottom-pill label: six items share 328px at 360px wide, so the longest one is shortened.
+export const NAV: { screen: Screen; label: string; short: string; bar?: string; Icon: typeof LayoutGrid }[] = [
+  { screen: 'overview', label: 'Overview', short: 'Overview', bar: 'Home', Icon: LayoutGrid },
   { screen: 'projects', label: 'Projects', short: 'Projects', Icon: FolderGit2 },
   { screen: 'pulls', label: 'Pull requests', short: 'PRs', Icon: GitPullRequest },
   { screen: 'claude', label: 'Claude', short: 'Claude', Icon: SquareTerminal },
+  { screen: 'usage', label: 'Usage', short: 'Usage', Icon: Gauge },
   { screen: 'settings', label: 'Settings', short: 'Settings', Icon: SettingsIcon },
 ];
 
@@ -78,10 +80,10 @@ export function BottomNav({ screen }: { screen: Screen }) {
   return (
     <nav className="bottom-nav glass-strong" aria-label="Main">
       <span className="bottom-indicator" style={{ width: `calc((100% - 8px) / ${NAV.length})`, transform: `translateX(${idx * 100}%)` }} aria-hidden />
-      {NAV.map(({ screen: s, label, short, Icon }) => (
+      {NAV.map(({ screen: s, label, short, bar, Icon }) => (
         <a key={s} className="bottom-item" href={href(s)} aria-current={s === screen ? 'page' : undefined} aria-label={label}>
           <Icon {...ICON} />
-          <span>{short}</span>
+          <span>{bar ?? short}</span>
         </a>
       ))}
     </nav>

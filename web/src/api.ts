@@ -1,7 +1,7 @@
 // Typed client for the ClaudeHub agent (/api/*). With ?mock=1 every call is served by mock.ts.
 import type {
   ActionResult, Health, Job, JobStreamMessage, NewJobRequest, NewProjectRequest, NewProjectResult, Overview, Project, ProjectAction,
-  ProjectDetail, PullRequest, Settings, Suggestion,
+  ProjectDetail, PullRequest, Settings, Suggestion, Usage,
 } from '../../shared/types';
 
 export const MOCK = typeof location !== 'undefined' && new URLSearchParams(location.search).get('mock') === '1';
@@ -94,6 +94,9 @@ export const api = {
   createJob: (req: NewJobRequest) => request<Job>('POST', '/api/jobs', req),
   cancelJob: (id: string) => request<Job>('POST', `/api/jobs/${enc(id)}/cancel`),
   aiSuggestions: () => request<Suggestion[]>('POST', '/api/suggestions/ai'),
+  getUsage: () => request<Usage>('GET', '/api/usage'),
+  /** Installs (or removes) the status line script that captures plan limits. */
+  setStatusline: (enabled: boolean) => request<ActionResult>('POST', '/api/usage/statusline', { enabled }),
   settings: () => request<Settings>('GET', '/api/settings'),
   saveSettings: (s: Partial<Settings>) => request<Settings>('PUT', '/api/settings', s),
 };

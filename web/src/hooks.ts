@@ -3,10 +3,10 @@ import { ApiError } from './api';
 
 // ---------- Hash router ----------
 
-export type Screen = 'overview' | 'projects' | 'pulls' | 'claude' | 'settings';
+export type Screen = 'overview' | 'projects' | 'pulls' | 'claude' | 'usage' | 'settings';
 export interface Route { screen: Screen; param: string | null; query: URLSearchParams }
 
-const SCREENS: Screen[] = ['overview', 'projects', 'pulls', 'claude', 'settings'];
+const SCREENS: Screen[] = ['overview', 'projects', 'pulls', 'claude', 'usage', 'settings'];
 
 export function parseHash(hash = location.hash): Route {
   const raw = hash.replace(/^#\/?/, '');

@@ -19,10 +19,10 @@ export function PageHead({ label, title, children }: { label: string; title: str
   );
 }
 
-export function Rolling({ value, className }: { value: number; className?: string }) {
+export function Rolling({ value, className, format = num }: { value: number; className?: string; format?: (n: number) => string }) {
   const reduced = useReducedMotion();
   const shown = useRolling(value, reduced);
-  return <span className={`num${className ? ' ' + className : ''}`}>{num(shown)}</span>;
+  return <span className={`num${className ? ' ' + className : ''}`}>{format(shown)}</span>;
 }
 
 type Tone = 'good' | 'bad' | 'warn' | 'accent' | 'neutral';
@@ -33,6 +33,24 @@ export function StatusWord({ tone, word, pulse }: { tone: Tone; word: string; pu
       <span className={`dot${tone !== 'neutral' ? ' ' + tone : ''}${pulse ? ' pulse' : ''}`} aria-hidden />
       {word}
     </span>
+  );
+}
+
+/** Horizontal meter: fill track, ink-2 bar, warn from 75%, bad from 90%. */
+export function meterTone(pct: number): { tone: 'warn' | 'bad'; word: string } | null {
+  if (pct >= 90) return { tone: 'bad', word: 'At limit' };
+  if (pct >= 75) return { tone: 'warn', word: 'Near limit' };
+  return null;
+}
+
+export function Meter({ value, label, thin }: { value: number; label: string; thin?: boolean }) {
+  const pct = Math.max(0, Math.min(100, value));
+  const t = meterTone(pct);
+  return (
+    <div className={`meter${thin ? ' thin' : ''}${t ? ' ' + t.tone : ''}`} role="meter" aria-label={label}
+      aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+      <span style={{ width: `${pct}%` }} />
+    </div>
   );
 }
 

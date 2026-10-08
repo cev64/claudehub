@@ -4,10 +4,11 @@ import type { Health, HealthCheck, Settings } from '../../../shared/types';
 import { api, ApiError, getToken, setToken } from '../api';
 import { bumpData, useNow, useTheme, type ThemePref } from '../hooks';
 import { relTime } from '../format';
-import { MODEL_OPTIONS, Segmented, Select } from '../components/controls';
+import { MODEL_OPTIONS, Segmented, Select, Switch } from '../components/controls';
 import { ErrorState, PageHead, SkeletonRows, StatusWord } from '../components/bits';
 import { toast } from '../components/Toasts';
 import type { Resource } from '../hooks';
+import { toggleCapture, useUsage } from './Usage';
 
 const EDITORS = ['Visual Studio Code', 'Cursor', 'Zed', 'Xcode'];
 
@@ -19,6 +20,7 @@ export function SettingsScreen({ settings, health }: { settings: Resource<Settin
   const [showToken, setShowToken] = useState(false);
   const [saving, setSaving] = useState(false);
   const now = useNow();
+  const usage = useUsage();
 
   useEffect(() => { if (settings.data && !form) setForm(settings.data); }, [settings.data, form]);
 
@@ -118,6 +120,23 @@ export function SettingsScreen({ settings, health }: { settings: Resource<Settin
         <div className="settings-save">
           <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving' : 'Save'}</button>
         </div>
+
+        <section className="glass card stack" aria-labelledby={`${uid}-u`} style={{ gap: 4 }}>
+          <h2 id={`${uid}-u`} className="card-title" style={{ marginBottom: 8 }}>Claude Code</h2>
+          {!usage.data ? (
+            usage.error ? <ErrorState error={usage.error} onRetry={usage.reload} /> : <SkeletonRows n={1} />
+          ) : (
+            <>
+              <Switch id={`${uid}-cap`} label="Usage capture" checked={usage.data.statusline.installed}
+                onChange={v => toggleCapture(usage, v)} />
+              {usage.data.statusline.chained && (
+                <p className="meta" style={{ margin: 0, overflowWrap: 'anywhere' }}>
+                  Also runs: <span className="mono" style={{ fontSize: 13 }}>{usage.data.statusline.chained}</span>
+                </p>
+              )}
+            </>
+          )}
+        </section>
 
         <section className="glass card" aria-labelledby={`${uid}-h`}>
           <div className="card-head">
