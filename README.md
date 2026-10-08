@@ -83,6 +83,25 @@ or the Claude phone app, with ClaudeHub showing the overall picture. Run `claude
 projects folder, log in, trust the folder and accept the Remote Control prompt. Then run
 `claude remote-control --name "Mac Mini"` in a terminal that stays open.
 
+## Usage
+
+The Usage screen shows how much of your Claude plan you have used and where the tokens went:
+
+- **Plan limits**: the 5-hour and weekly percentages and when they reset. These come from
+  interactive Claude Code sessions on this Mac and update whenever one runs. Claude.ai chats and
+  cloud sessions count toward the same limits but are not itemised here.
+- **Tokens**: today, the last 7 days, a 14-day chart, and breakdowns by model, project and session
+  (with how full each session's context window is). Counts are read from Claude Code's local
+  transcripts in `~/.claude/projects`, a format that can change between Claude Code versions.
+- **Last limit notice**: the latest usage warning Claude reported to a job started from ClaudeHub.
+
+To get plan limits, turn on usage capture in ClaudeHub → Usage. That sets Claude Code's
+`statusLine` in `~/.claude/settings.json` to `scripts/statusline.mjs`, after saving a copy of the
+file to `~/.claudehub/backups/`. If you already have a status line, it keeps running and showing
+as before; turning capture off restores it. Nothing else in the file is touched, and an invalid
+`settings.json` is left alone. Without capture, token counts still work. (`CLAUDE_CONFIG_DIR` is
+honoured if you use a non-default Claude config folder.)
+
 ## Develop
 
 ```bash
@@ -99,7 +118,7 @@ the React dashboard, `shared/types.ts` is the API contract, and `docs/` holds th
 `~/.claudehub/config.json`, also editable in the dashboard: projects folder, scan depth, editor app
 (`open -a "Visual Studio Code"`, Cursor, Zed…), refresh interval and default model. Environment
 overrides: `PROJECTS_DIR`, `PORT`, `HOST`, `CLAUDEHUB_TOKEN`, `GITHUB_TOKEN`, `CLAUDE_BIN`,
-`CLAUDEHUB_HOME`.
+`CLAUDEHUB_HOME`, `CLAUDE_CONFIG_DIR`.
 
 ## Status
 

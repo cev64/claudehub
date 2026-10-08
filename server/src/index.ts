@@ -133,6 +133,12 @@ app.post('/api/suggestions/ai', async () => {
   }
 });
 
+app.get('/api/usage', async () => hub.usage());
+app.post<{ Body: { enabled?: unknown } }>('/api/usage/statusline', async (req) => {
+  if (typeof req.body?.enabled !== 'boolean') throw new HttpError(400, 'Send { "enabled": true | false }.');
+  return hub.setStatusline(req.body.enabled);
+});
+
 app.get('/api/settings', async () => hub.getSettings());
 app.put<{ Body: Partial<Settings> }>('/api/settings', async (req) => hub.updateSettings(req.body ?? {}));
 

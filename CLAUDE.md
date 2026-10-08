@@ -14,9 +14,11 @@ is in `docs/NEXT_STEPS.md`.
   - `hub.ts`: state and orchestration (scan loop, GitHub sync, overview, actions, jobs, new projects).
   - `scanner.ts` and `git.ts` cover local repos. `github.ts` is the GraphQL sync. `merge.ts` combines the two into `Project[]`.
   - `jobs.ts` + `claude.ts`: Claude runner (queue of 2, NDJSON parsing, persistence in `~/.claudehub/jobs`).
+  - `usage.ts`: Claude usage. Scans `~/.claude/projects` transcripts (mtime+size cache), reads plan limits and per-session context captured by `scripts/statusline.mjs`, records the last `rate_limit_event`, and installs/removes the status line in `~/.claude/settings.json` (backup first, chains an existing status line).
   - `suggestions.ts` (rules + Claude suggestions), `actions.ts` (open/fetch/pull/clone), `config.ts`, `store.ts`.
 - `web/src/`: React 19 + Vite dashboard. `api.ts` is the typed client, `mock.ts` holds sample data
   for `?mock=1`, and `screens/` and `components/` hold the UI.
+- `scripts/statusline.mjs`: Claude Code status line command (plain Node, no deps, never fails). Saves the JSON Claude Code pipes in to `~/.claudehub/statusline/`, then runs the user's previous status line (`chain.json`) or prints a short default.
 - `scripts/install-mac.sh` / `uninstall-mac.sh`: launchd agent `com.claudehub.agent`, logs in
   `~/.claudehub/agent.log`.
 - `supabase/migrations/`: the `claudehub` schema in the **Budget** Supabase project
@@ -34,7 +36,8 @@ npm start                # agent only, serves dist/web
 ```
 
 Useful env vars: `PROJECTS_DIR`, `PORT`, `HOST`, `CLAUDEHUB_TOKEN`, `CLAUDEHUB_HOME` (default
-`~/.claudehub`), `GITHUB_TOKEN`, `CLAUDE_BIN`.
+`~/.claudehub`), `GITHUB_TOKEN`, `CLAUDE_BIN`, `CLAUDE_CONFIG_DIR` (Claude Code's config folder, read for
+usage; default `~/.claude`).
 
 ## Testing without spending the subscription
 
@@ -45,6 +48,9 @@ stream-json, and at a throwaway home and projects folder:
 CLAUDE_BIN=$PWD/scripts/dev/fake-claude CLAUDEHUB_HOME=/tmp/chub-home \
 PROJECTS_DIR=/tmp/chub-projects PORT=4399 npx tsx server/src/index.ts
 ```
+
+For usage tests also set `CLAUDE_CONFIG_DIR` to a folder with fake `projects/*/*.jsonl` transcripts and
+`settings.json`, so the real `~/.claude` is never read or edited. The fake CLI emits a `rate_limit_event`.
 
 Put a prompt containing `slow` in a job to get a long-running fake job for cancel tests. Check UI
 changes in a browser at `?mock=1` (sample data) and against the running agent, at 1440px and

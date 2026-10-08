@@ -4,7 +4,8 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type { Job, JobEvent, JobStreamMessage, NewJobRequest } from '../../shared/types.ts';
 import { dataPath } from './config.ts';
-import { CLAUDE_MISSING, parseStreamLine, resolveClaudeBin, type PartialEvent } from './claude.ts';
+import { CLAUDE_MISSING, parseStreamLine, rateLimitText, resolveClaudeBin, type PartialEvent } from './claude.ts';
+import { recordRateLimit } from './usage.ts';
 import { claudeEnv, log, stripAnsi, truncate, warn, errMsg } from './util.ts';
 
 const MAX_CONCURRENT = 2;
@@ -24,6 +25,7 @@ interface Runtime {
   resultOk?: boolean;
   lastText: string | null;
   outputTail: string[];
+  lastRateKey?: string;
 }
 
 export function isFinished(status: Job['status']): boolean {
@@ -260,6 +262,13 @@ export class JobManager {
       for (const e of parsed.events) {
         if (e.type === 'text') rt.lastText = e.text;
         this.addEvent(job, e);
+      }
+      if (parsed.rateLimit) {
+        recordRateLimit(parsed.rateLimit);
+        const text = rateLimitText(parsed.rateLimit);
+        const key = `${parsed.rateLimit.status}|${parsed.rateLimit.resetsAt}`;
+        if (text && key !== rt.lastRateKey) this.addEvent(job, { type: 'system', text });
+        rt.lastRateKey = key;
       }
       if (parsed.result) {
         rt.sawResult = true;

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type {
-  Health, Job, NewJobRequest, NewProjectRequest, NewProjectResult, Overview, Project, ProjectDetail, Settings, Suggestion,
+  ActionResult, Health, Job, NewJobRequest, NewProjectRequest, NewProjectResult, Overview, Project, ProjectDetail, Settings, Suggestion, Usage,
 } from '../../shared/types.ts';
 import { loadSettings, saveSettings, sanitize, type StoredSettings } from './config.ts';
 import { readJson, writeJson } from './store.ts';
@@ -14,6 +14,7 @@ import { aiSuggestions, aiSuggestionsAt, generateAiSuggestions, ruleSuggestions 
 import { JobManager } from './jobs.ts';
 import { claudeHealth } from './claude.ts';
 import { runProjectAction } from './actions.ts';
+import { getUsage, refreshStatuslineCommand, setStatusline } from './usage.ts';
 import { errMsg, truncate, findBinary, lastDayKeys, log, run, warn } from './util.ts';
 
 const VERSION: string = (() => {
@@ -60,6 +61,7 @@ export class Hub {
     }
     const gh = readJson<GithubData>('github-cache.json');
     if (gh?.repos) this.github = gh;
+    refreshStatuslineCommand();
     void this.refresh();
     this.schedule();
   }
@@ -315,6 +317,15 @@ export class Hub {
   async aiSuggest(): Promise<Suggestion[]> {
     const ov = this.overview();
     return generateAiSuggestions(this.snapshot, ov, this.settings.projectsDir);
+  }
+
+  // -- usage ------------------------------------------------------------------------------
+  usage(): Promise<Usage> {
+    return getUsage(this.snapshot.projects);
+  }
+
+  setStatusline(enabled: boolean): ActionResult {
+    return setStatusline(enabled);
   }
 
   // -- health -----------------------------------------------------------------------------

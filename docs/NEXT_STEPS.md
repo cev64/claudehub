@@ -18,6 +18,9 @@ These parts have never run against the real thing:
 | Cloud runs | *Cloud* mode on a pushed repo creates a session and the run shows an "Open in Claude" link | `claude.ts` (the URL regex; `claude --cloud` output is undocumented) |
 | Actions | Open in editor / Finder / Terminal, Fetch, Pull, Clone all work | `server/src/actions.ts` |
 | New project | Creates the folder and, with GitHub on, `cev64/<name>`, then starts the run | `hub.ts` `createProject` |
+| Usage tokens | Usage shows today's and this week's tokens, and they roughly match Claude Code's `/usage` history | `server/src/usage.ts` (transcript parsing; the format is internal and may have changed) |
+| Usage capture | Usage → Turn on. `~/.claude/settings.json` gets the `statusline.mjs` command (with a backup in `~/.claudehub/backups/`), an existing status line still shows, and after one prompt in an interactive `claude` the 5-hour and weekly % match `/usage` | `scripts/statusline.mjs`, `usage.ts` |
+| Subagent tokens | Sessions that used subagents include their tokens (the code expects `<session>/subagents/*.jsonl`) | `usage.ts` |
 
 Done: every row checked, fixes committed.
 

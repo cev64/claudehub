@@ -91,6 +91,7 @@ add_env HOME "$HOME"
 [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && add_env CLAUDE_CODE_OAUTH_TOKEN "$CLAUDE_CODE_OAUTH_TOKEN"
 [ -n "${GITHUB_TOKEN:-}" ]            && add_env GITHUB_TOKEN "$GITHUB_TOKEN"
 [ -n "${CLAUDE_BIN:-}" ]              && add_env CLAUDE_BIN "$CLAUDE_BIN"
+[ -n "${CLAUDE_CONFIG_DIR:-}" ]       && add_env CLAUDE_CONFIG_DIR "$CLAUDE_CONFIG_DIR"
 
 if [ -n "${HOST:-}" ] && [ "$HOST" != "127.0.0.1" ] && [ "$HOST" != "localhost" ] && [ -z "${CLAUDEHUB_TOKEN:-}" ]; then
   warn "HOST=$HOST exposes the agent on your network without CLAUDEHUB_TOKEN. Set CLAUDEHUB_TOKEN and re-run."
@@ -136,3 +137,4 @@ case "$SHOW_HOST" in 0.0.0.0|::) SHOW_HOST="$(hostname)";; esac
 say "ClaudeHub is running: http://$SHOW_HOST:$PORT_VALUE"
 echo "    Logs:      $DATA_DIR/agent.log"
 echo "    Uninstall: $REPO/scripts/uninstall-mac.sh"
+echo "    Plan limits: turn on usage capture in ClaudeHub → Usage"

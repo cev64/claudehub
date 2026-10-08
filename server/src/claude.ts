@@ -1,9 +1,10 @@
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import type { JobEvent } from '../../shared/types.ts';
+import type { JobEvent, RateLimitNotice } from '../../shared/types.ts';
 import type { HealthCheck } from '../../shared/types.ts';
 import { claudeEnv, findBinary, run, truncate, errMsg } from './util.ts';
+import { normalizeUtilization } from './usage.ts';
 
 export function resolveClaudeBin(): string | null {
   const envBin = process.env.CLAUDE_BIN?.trim();
@@ -27,6 +28,31 @@ export interface ParsedLine {
   events: PartialEvent[];
   sessionId?: string;
   result?: { ok: boolean; text: string | null; error: string | null };
+  rateLimit?: RateLimitNotice;
+}
+
+/** A `rate_limit_event` line from stream-json, or null when it isn't one we understand. */
+export function parseRateLimitEvent(msg: any, now = new Date()): RateLimitNotice | null {
+  const info = msg?.rate_limit_info;
+  if (!info || typeof info !== 'object') return null;
+  const status = info.status;
+  if (status !== 'allowed' && status !== 'allowed_warning' && status !== 'rejected') return null;
+  const secs = typeof info.resetsAt === 'number' && Number.isFinite(info.resetsAt) ? info.resetsAt : null;
+  return {
+    status,
+    utilization: normalizeUtilization(info.utilization),
+    resetsAt: secs !== null ? new Date(secs * 1000).toISOString() : null,
+    at: now.toISOString(),
+  };
+}
+
+/** Text for the job log when Claude reports a usage warning or limit (null when status is allowed). */
+export function rateLimitText(n: RateLimitNotice): string | null {
+  if (n.status === 'allowed') return null;
+  const head = n.status === 'rejected' ? 'Usage limit reached' : 'Usage warning';
+  if (!n.resetsAt) return head;
+  const t = new Date(n.resetsAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return `${head} \u00b7 resets ${t}`;
 }
 
 export function summarizeToolInput(input: unknown): string {
@@ -85,8 +111,12 @@ export function parseStreamLine(line: string): ParsedLine {
       const shown = ok ? text ?? 'Done' : error!;
       return { events: [{ type: 'result', text: shown }], sessionId: sid, result: { ok, text: ok ? text : text, error } };
     }
+    case 'rate_limit_event': {
+      const rateLimit = parseRateLimitEvent(msg);
+      return rateLimit ? { events: [], rateLimit } : { events: [] };
+    }
     default:
-      return { events: [] }; // user (tool results), rate_limit_event, etc.
+      return { events: [] }; // user (tool results), etc.
   }
 }
 
