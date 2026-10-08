@@ -33,8 +33,21 @@ function safeEqual(a: string, b: string): boolean {
   return ba.length === bb.length && timingSafeEqual(ba, bb);
 }
 
+// Decide by the matched route and by the decoded path, never the raw URL alone:
+// the router decodes `/%61pi/...` and collapses `//api/...`, so a raw-prefix check can be bypassed.
+function isApiRequest(route: string | undefined, rawUrl: string): boolean {
+  if (route?.startsWith('/api')) return true;
+  let p = rawUrl.split('?')[0];
+  try {
+    p = decodeURIComponent(p);
+  } catch {
+    return true; // malformed encoding: treat as protected
+  }
+  return p.replace(/\/{2,}/g, '/').toLowerCase().startsWith('/api');
+}
+
 app.addHook('onRequest', async (req, reply) => {
-  if (!TOKEN || !req.url.startsWith('/api')) return;
+  if (!TOKEN || !isApiRequest(req.routeOptions?.url, req.url)) return;
   // A loopback peer that carries forwarding headers is a reverse proxy (e.g. tailscale serve), not a local user.
   const proxied = Boolean(req.headers['x-forwarded-for'] || req.headers['x-forwarded-host']);
   if (isLoopback(req.ip) && !proxied) return;
