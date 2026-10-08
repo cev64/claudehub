@@ -2,8 +2,8 @@
 
 A dashboard that runs all the time on your Mac Mini. It reads your projects folder and your
 GitHub, shows every project in one place (PRs, most active project, uncommitted work), suggests
-what to do next, and sends prompts to Claude, either on the Mac or as a Claude Code on the web
-session.
+what to do next, and sends prompts to Claude running on the Mac, from anywhere. For Claude Code on
+the web sessions, use claude.ai/code directly.
 
 ```
             ┌──────────────────────── Mac Mini ────────────────────────┐
@@ -11,7 +11,6 @@ session.
  (Mac, or   │   ├─ scans ~/Desktop/<projects> with git                 │
  phone via  │   ├─ syncs GitHub (gh login or a token) ────────────────▶│── api.github.com
  Tailscale) │   ├─ runs `claude -p` in a repo (your subscription)      │
-            │   ├─ starts cloud sessions with `claude --cloud` ───────▶│── claude.ai/code
             │   └─ serves the dashboard (Fluid Glass UI)               │
             └──────────────────────────────────────────────────────────┘
 ```
@@ -62,14 +61,15 @@ export CLAUDEHUB_TOKEN="$(openssl rand -hex 24)"; echo "$CLAUDEHUB_TOKEN"
 
 Then open `http://<mac-mini-tailscale-name>:4317` and paste the token in Settings.
 
-## Claude modes
+## Claude runs
 
-- **On Mac**: runs `claude -p` inside the project folder. Permissions: *Plan* (reads only and
-  proposes changes), *Edit files* (may edit files, but shell commands that need approval are
-  denied), *Auto* (Claude Code's auto mode). Each run keeps its session, so you can continue it.
-- **Cloud**: runs `claude --cloud` in the project, which starts a Claude Code on the web session on
-  the GitHub repo and links to it. Use it for work that should end in a PR. Push your branch first,
-  because the cloud session clones what's on GitHub.
+Runs use `claude -p` inside the project folder on the Mac. Permissions: *Plan* (reads only and
+proposes changes), *Edit files* (may edit files, but shell commands that need approval are
+denied), *Auto* (Claude Code's auto mode, which can also commit and push). Each run keeps its
+session, so you can continue it.
+
+There is no cloud mode: `claude --cloud` only works from an interactive terminal, so the agent
+can't start one. Start Claude Code on the web sessions at claude.ai/code instead.
 
 The agent removes `ANTHROPIC_API_KEY` from Claude's environment so your subscription is always
 used. If a launchd-started `claude` can't reach the Keychain login, run `claude setup-token`

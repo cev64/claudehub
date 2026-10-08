@@ -231,18 +231,16 @@ export class Hub {
 
   createJob(req: NewJobRequest): Job {
     if (!req || typeof req.prompt !== 'string' || !req.prompt.trim()) throw new HttpError(400, 'A prompt is required.');
-    if (req.mode !== 'local' && req.mode !== 'cloud') throw new HttpError(400, 'mode must be "local" or "cloud".');
     if (!['plan', 'acceptEdits', 'auto'].includes(req.permission)) throw new HttpError(400, 'permission must be plan, acceptEdits or auto.');
     let cwd = this.settings.projectsDir;
     let name: string | null = null;
-    let prompt = req.prompt.trim();
+    const prompt = req.prompt.trim();
     if (req.projectId) {
       const p = this.findProject(req.projectId);
       if (!p) throw new HttpError(404, 'Unknown project');
+      if (!p.local) throw new HttpError(400, `${p.name} is not cloned on this Mac. Clone it first.`);
       name = p.name;
-      if (p.local) cwd = p.local.path;
-      else if (req.mode === 'local') throw new HttpError(400, `${p.name} is not cloned on this Mac; clone it first or use a cloud job.`);
-      else if (p.github) prompt = `In the GitHub repository ${p.github.fullName}: ${prompt}`;
+      cwd = p.local.path;
     }
     const model = req.model === undefined ? this.settings.defaultModel : req.model || null;
     return this.jobs.create({ ...req, prompt }, { projectName: name, cwd, model });
@@ -306,7 +304,7 @@ export class Hub {
     if (req.prompt && req.prompt.trim()) {
       const model = req.model === undefined ? this.settings.defaultModel : req.model || null;
       job = this.jobs.create(
-        { projectId: project?.id ?? null, prompt: req.prompt.trim(), mode: 'local', permission: req.permission ?? 'auto' },
+        { projectId: project?.id ?? null, prompt: req.prompt.trim(), permission: req.permission ?? 'auto' },
         { projectName: project?.name ?? name, cwd: dir, model },
       );
     }

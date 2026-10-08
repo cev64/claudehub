@@ -93,7 +93,7 @@ export type SuggestionKind =
   | 'not-cloned' | 'no-claude-md' | 'stale-project' | 'ai';
 
 export type SuggestionAction =
-  | { type: 'prompt'; prompt: string; mode: JobMode; permission: PermissionLevel }
+  | { type: 'prompt'; prompt: string; permission: PermissionLevel }
   | { type: 'project-action'; action: ProjectAction }
   | { type: 'link'; url: string };
 
@@ -135,8 +135,7 @@ export interface Overview {
   aiSuggestionsAt: string | null;
 }
 
-export type JobMode = 'local' | 'cloud';
-// local runs `claude -p` in the repo on the Mac; cloud runs `claude --cloud` (Claude Code on the web)
+// Jobs run `claude -p` in the repo on the Mac.
 export type PermissionLevel = 'plan' | 'acceptEdits' | 'auto';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
@@ -153,7 +152,6 @@ export interface Job {
   projectName: string | null;
   cwd: string;
   prompt: string;
-  mode: JobMode;
   permission: PermissionLevel;
   model: string | null;
   status: JobStatus;
@@ -161,7 +159,6 @@ export interface Job {
   startedAt: string | null;
   finishedAt: string | null;
   sessionId: string | null;     // Claude session id, usable to continue the conversation
-  cloudUrl: string | null;      // claude.ai/code link for cloud jobs
   resultText: string | null;
   error: string | null;
   events?: JobEvent[];          // only on GET /api/jobs/:id
@@ -170,7 +167,6 @@ export interface Job {
 export interface NewJobRequest {
   projectId: string | null;     // null = run in the projects folder root
   prompt: string;
-  mode: JobMode;
   permission: PermissionLevel;
   model?: string | null;        // 'opus' | 'sonnet' | 'haiku' | full id; null = CLI default
   resumeSessionId?: string | null;

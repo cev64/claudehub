@@ -2,8 +2,8 @@
 
 A dashboard that runs on Charlie's Mac Mini: it scans the local projects folder and GitHub
 (`cev64`), shows every project, PRs and activity, suggests next steps, and runs Claude Code in a
-project (on the Mac with `claude -p`, or in the cloud with `claude --cloud`). What's left to build
-is in `docs/NEXT_STEPS.md`.
+project on the Mac with `claude -p`, from anywhere. There is no cloud mode (`claude --cloud`
+needs an interactive terminal). What's left to build is in `docs/NEXT_STEPS.md`.
 
 ## Layout
 

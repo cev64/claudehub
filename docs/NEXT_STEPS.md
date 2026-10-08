@@ -15,7 +15,6 @@ These parts have never run against the real thing:
 | Claude login under launchd | Health shows "Logged in (claude.ai)". A *Plan* run in a small repo streams text and finishes | `server/src/claude.ts`. If the Keychain isn't readable from launchd, use `claude setup-token` + `CLAUDE_CODE_OAUTH_TOKEN` |
 | Permission flags | A local run doesn't fail right away on `--permission-prompts none` | `jobs.ts` `start()` (remove the flag if this CLI version rejects it) |
 | Edit / Auto runs | *Edit files* changes a file. *Auto* can run `npm test` or `swift build` | `jobs.ts` |
-| Cloud runs | *Cloud* mode on a pushed repo creates a session and the run shows an "Open in Claude" link | `claude.ts` (the URL regex; `claude --cloud` output is undocumented) |
 | Actions | Open in editor / Finder / Terminal, Fetch, Pull, Clone all work | `server/src/actions.ts` |
 | New project | Creates the folder and, with GitHub on, `cev64/<name>`, then starts the run | `hub.ts` `createProject` |
 | Usage tokens | Usage shows today's and this week's tokens, and they roughly match Claude Code's `/usage` history | `server/src/usage.ts` (transcript parsing; the format is internal and may have changed) |
@@ -23,6 +22,18 @@ These parts have never run against the real thing:
 | Subagent tokens | Sessions that used subagents include their tokens (the code expects `<session>/subagents/*.jsonl`) | `usage.ts` |
 
 Done: every row checked, fixes committed.
+
+### Results on the Mac Mini (2026-10-08, Claude Code 2.1.295)
+
+- Passed: install, launchd restart after a kill, GitHub (24 repos, 3 open PRs, 255 authored and
+  157 merged in 30 days, all matching github.com), Claude login under launchd (Keychain works, no
+  `setup-token` needed), `--permission-prompts none`, *Plan*, *Edit files* and *Auto* runs
+  (`npm test`), cancel (no leftover processes), Open in editor/Finder/Terminal, Fetch, Pull, usage
+  tokens, subagent transcripts at `<session>/subagents/*.jsonl`.
+- Cloud runs removed: `claude --cloud` exits with "requires an interactive terminal", and under
+  a pseudo-terminal it stops at the folder-trust prompt. Cloud sessions are started from
+  claude.ai/code instead.
+- Still open: reboot, Clone, New project, usage capture, a push from an *Auto* run.
 
 ## 2. Supabase relay (use the dashboard away from home without Tailscale)
 
@@ -94,6 +105,5 @@ watch it stream, create a new project.
 ## 3. Later
 
 - Push notifications when a run finishes or CI fails (web push from the hosted dashboard).
-- Per-project "Open in Claude Code on the web" history (`claude --cloud <session-id>` follow-ups).
 - Remote Control as a second LaunchAgent (`claude remote-control --name "Mac Mini"`) once the
   one-time trust prompt is accepted interactively.

@@ -40,7 +40,6 @@ export function ruleSuggestions(snap: Snapshot, now = Date.now()): Suggestion[] 
           action: {
             type: 'prompt',
             prompt: 'Review the uncommitted changes in this repo (git diff and git status) and commit them with a good, descriptive commit message. Group unrelated changes into separate commits.',
-            mode: 'local',
             permission: 'acceptEdits',
           },
         });
@@ -72,7 +71,6 @@ export function ruleSuggestions(snap: Snapshot, now = Date.now()): Suggestion[] 
           action: {
             type: 'prompt',
             prompt: "Create a CLAUDE.md describing this repo's structure, commands and conventions.",
-            mode: 'local',
             permission: 'acceptEdits',
           },
         });
@@ -103,7 +101,7 @@ export function ruleSuggestions(snap: Snapshot, now = Date.now()): Suggestion[] 
         detail: truncate(pr.title, 90),
         priority: 1,
         idSuffix: String(pr.number),
-        action: { type: 'prompt', prompt: `Fix the failing CI on PR #${pr.number}`, mode: 'cloud', permission: 'acceptEdits' },
+        action: { type: 'prompt', prompt: `Fix the failing CI on PR #${pr.number}`, permission: 'acceptEdits' },
       });
     } else if (pr.reviewDecision === 'APPROVED' && pr.checks === 'success' && !pr.draft) {
       add(p, {
@@ -140,7 +138,6 @@ export function ruleSuggestions(snap: Snapshot, now = Date.now()): Suggestion[] 
       action: {
         type: 'prompt',
         prompt: 'Look over this repo and tell me where it was left off, and whether it is worth reviving or archiving. Do not change any files.',
-        mode: 'local',
         permission: 'plan',
       },
     });
@@ -239,7 +236,7 @@ async function doGenerate(snap: Snapshot, overview: Overview, cwd: string): Prom
       title: truncate(s.title, 80),
       detail: truncate(String(s.detail ?? ''), 200),
       priority: pr === 1 || pr === 2 || pr === 3 ? pr : 2,
-      action: { type: 'prompt', prompt: s.prompt, mode: 'local', permission: 'plan' },
+      action: { type: 'prompt', prompt: s.prompt, permission: 'plan' },
       source: 'claude',
     });
   }

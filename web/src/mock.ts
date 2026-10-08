@@ -194,7 +194,7 @@ const listeners = new Map<string, Set<(m: JobStreamMessage) => void>>();
 function scriptFor(req: NewJobRequest, cwd: string): Omit<JobEvent, 'ts'>[] {
   const where = cwd.replace(/^\/Users\/[^/]+/, '~');
   const s: Omit<JobEvent, 'ts'>[] = [
-    { type: 'system', text: req.mode === 'cloud' ? 'Cloud session created' : `Session started in ${where}` },
+    { type: 'system', text: `Session started in ${where}` },
     { type: 'text', text: "I'll look at how the project is laid out first." },
     { type: 'tool', tool: 'Glob', text: 'src/**/*.{ts,tsx}' },
     { type: 'tool', tool: 'Read', text: 'src/App.tsx' },
@@ -230,15 +230,13 @@ function makeJob(req: NewJobRequest, ago: number, status: Job['status'], doneSte
     projectName: project?.name ?? null,
     cwd,
     prompt: req.prompt,
-    mode: req.mode,
     permission: req.permission,
     model: req.model ?? null,
     status,
     createdAt: new Date(created).toISOString(),
     startedAt: status === 'queued' ? null : new Date(created + 400).toISOString(),
     finishedAt: finished ? new Date(created + script.length * 2500).toISOString() : null,
-    sessionId: req.mode === 'local' && status !== 'queued' ? `9f2c${id.slice(4)}-4d1e-8a77` : null,
-    cloudUrl: req.mode === 'cloud' ? `https://claude.ai/code/session_${id.slice(4)}` : null,
+    sessionId: status !== 'queued' ? `9f2c${id.slice(4)}-4d1e-8a77` : null,
     resultText: status === 'succeeded' ? result?.text ?? null : null,
     error: status === 'failed' ? 'claude exited with code 1' : null,
     events,
@@ -247,10 +245,10 @@ function makeJob(req: NewJobRequest, ago: number, status: Job['status'], doneSte
 }
 
 jobs.push(
-  makeJob({ projectId: 'cev64/budget-app', prompt: 'Add a theme setting (System / Light / Dark) to Settings and apply it on load.', mode: 'local', permission: 'acceptEdits', model: null }, 40_000, 'running', 3),
-  makeJob({ projectId: 'cev64/claudehub', prompt: 'Review the uncommitted changes and suggest a commit message.', mode: 'local', permission: 'plan', model: 'sonnet' }, 2 * HOUR, 'succeeded'),
-  makeJob({ projectId: 'cev64/bets-tracker', prompt: 'Fix the flaky odds parser test in CI.', mode: 'cloud', permission: 'acceptEdits', model: 'opus' }, 26 * HOUR, 'succeeded'),
-  makeJob({ projectId: 'cev64/league-history', prompt: 'Import the 2025 season CSV and regenerate recaps.', mode: 'local', permission: 'auto', model: null }, 3 * DAY, 'failed'),
+  makeJob({ projectId: 'cev64/budget-app', prompt: 'Add a theme setting (System / Light / Dark) to Settings and apply it on load.', permission: 'acceptEdits', model: null }, 40_000, 'running', 3),
+  makeJob({ projectId: 'cev64/claudehub', prompt: 'Review the uncommitted changes and suggest a commit message.', permission: 'plan', model: 'sonnet' }, 2 * HOUR, 'succeeded'),
+  makeJob({ projectId: 'cev64/bets-tracker', prompt: 'Fix the flaky odds parser test in CI.', permission: 'acceptEdits', model: 'opus' }, 26 * HOUR, 'succeeded'),
+  makeJob({ projectId: 'cev64/league-history', prompt: 'Import the 2025 season CSV and regenerate recaps.', permission: 'auto', model: null }, 3 * DAY, 'failed'),
 );
 jobs[3].events.push({ ts: jobs[3].finishedAt!, type: 'error', text: 'claude exited with code 1' });
 
@@ -264,7 +262,7 @@ function ensureTicker() {
       if (j.status === 'queued') {
         j.status = 'running';
         j.startedAt = new Date().toISOString();
-        if (j.mode === 'local') j.sessionId = `9f2c${j.id.slice(4)}-4d1e-8a77`;
+        j.sessionId = `9f2c${j.id.slice(4)}-4d1e-8a77`;
         emit(j.id, { kind: 'status', job: publicJob(j) });
         continue;
       }
@@ -315,12 +313,12 @@ const ruleSuggestions: Suggestion[] = [
   {
     id: 's1', kind: 'ci-failing', projectId: 'cev64/budget-app', projectName: 'budget-app', priority: 1, source: 'rules',
     title: 'Checks failing on #42', detail: 'budget-app · Net worth chart with scrub tooltip',
-    action: { type: 'prompt', prompt: 'Checks are failing on PR #42 (feat/net-worth-chart). Find the cause and fix it.', mode: 'local', permission: 'acceptEdits' },
+    action: { type: 'prompt', prompt: 'Checks are failing on PR #42 (feat/net-worth-chart). Find the cause and fix it.', permission: 'acceptEdits' },
   },
   {
     id: 's2', kind: 'uncommitted', projectId: 'cev64/claudehub', projectName: 'claudehub', priority: 1, source: 'rules',
     title: '6 uncommitted files', detail: 'claudehub · main',
-    action: { type: 'prompt', prompt: 'Review the uncommitted changes and commit them with a clear message.', mode: 'local', permission: 'acceptEdits' },
+    action: { type: 'prompt', prompt: 'Review the uncommitted changes and commit them with a clear message.', permission: 'acceptEdits' },
   },
   {
     id: 's3', kind: 'behind', projectId: 'cev64/bets-tracker', projectName: 'bets-tracker', priority: 2, source: 'rules',
@@ -340,7 +338,7 @@ const ruleSuggestions: Suggestion[] = [
   {
     id: 's6', kind: 'no-claude-md', projectId: 'local:scratch-notes', projectName: 'scratch-notes', priority: 3, source: 'rules',
     title: 'No CLAUDE.md', detail: 'scratch-notes',
-    action: { type: 'prompt', prompt: 'Create a concise CLAUDE.md for this repository.', mode: 'local', permission: 'acceptEdits' },
+    action: { type: 'prompt', prompt: 'Create a concise CLAUDE.md for this repository.', permission: 'acceptEdits' },
   },
 ];
 let aiSuggestions: Suggestion[] = [];
@@ -632,7 +630,7 @@ export async function mockRequest(method: string, path: string, body: unknown): 
         {
           id: 'ai1', kind: 'ai', projectId: 'cev64/claudehub', projectName: 'claudehub', priority: 2, source: 'claude',
           title: 'Add tests for the repo scanner', detail: 'claudehub · scanner has no coverage for nested repos',
-          action: { type: 'prompt', prompt: 'Add tests for the repo scanner, including nested repos and scan depth.', mode: 'local', permission: 'acceptEdits' },
+          action: { type: 'prompt', prompt: 'Add tests for the repo scanner, including nested repos and scan depth.', permission: 'acceptEdits' },
         },
         {
           id: 'ai2', kind: 'ai', projectId: 'cev64/league-history', projectName: 'league-history', priority: 3, source: 'claude',
@@ -712,7 +710,7 @@ function createProject(req: NewProjectRequest): NewProjectResult {
   projects.unshift(project);
   let job: Job | null = null;
   if (req.prompt?.trim()) {
-    const j = makeJob({ projectId: project.id, prompt: req.prompt.trim(), mode: 'local', permission: req.permission ?? 'auto', model: req.model ?? null }, 0, 'queued');
+    const j = makeJob({ projectId: project.id, prompt: req.prompt.trim(), permission: req.permission ?? 'auto', model: req.model ?? null }, 0, 'queued');
     jobs.unshift(j);
     ensureTicker();
     job = publicJob(j);

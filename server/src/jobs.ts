@@ -12,7 +12,6 @@ const MAX_CONCURRENT = 2;
 const MAX_JOBS = 200;
 const MAX_EVENTS = 5000;
 const MAX_EVENT_TEXT = 8000;
-const CLOUD_URL_RE = /https:\/\/claude\.ai\/code\/[^\s)"'<>\]]+/;
 
 type Listener = (msg: JobStreamMessage) => void;
 
@@ -24,7 +23,6 @@ interface Runtime {
   sawResult: boolean;
   resultOk?: boolean;
   lastText: string | null;
-  outputTail: string[];
   lastRateKey?: string;
 }
 
@@ -166,7 +164,6 @@ export class JobManager {
       projectName: ctx.projectName,
       cwd: ctx.cwd,
       prompt: req.prompt,
-      mode: req.mode,
       permission: req.permission,
       model: ctx.model,
       status: 'queued',
@@ -174,17 +171,16 @@ export class JobManager {
       startedAt: null,
       finishedAt: null,
       sessionId: req.resumeSessionId ?? null,
-      cloudUrl: null,
       resultText: null,
       error: null,
     };
     this.jobs.set(job.id, job);
     this.events.set(job.id, []);
-    this.rt.set(job.id, { cancelRequested: false, stderrTail: [], sawResult: false, lastText: null, outputTail: [] });
+    this.rt.set(job.id, { cancelRequested: false, stderrTail: [], sawResult: false, lastText: null });
     this.queue.push(job.id);
     this.persist(job);
     this.prune();
-    log(`job ${job.id.slice(0, 8)} queued (${job.mode}, ${job.permission}) ${truncate(job.prompt, 60)}`);
+    log(`job ${job.id.slice(0, 8)} queued (${job.permission}) ${truncate(job.prompt, 60)}`);
     setImmediate(() => this.pump());
     return { ...job };
   }
@@ -219,16 +215,11 @@ export class JobManager {
 
     // A leading dash would be read as a flag.
     const prompt = job.prompt.startsWith('-') ? ' ' + job.prompt : job.prompt;
-    let args: string[];
-    if (job.mode === 'cloud') {
-      args = ['--cloud', prompt];
-    } else {
-      args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', job.permission, '--permission-prompts', 'none'];
-      if (job.model) args.push('--model', job.model);
-      if (job.sessionId) args.push('--resume', job.sessionId);
-    }
+    const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', job.permission, '--permission-prompts', 'none'];
+    if (job.model) args.push('--model', job.model);
+    if (job.sessionId) args.push('--resume', job.sessionId);
     this.addEvent(job, { type: 'system', text: `Running in ${job.cwd}` });
-    log(`job ${job.id.slice(0, 8)} starting: ${path.basename(bin)} ${job.mode === 'cloud' ? '--cloud' : '-p'} (cwd ${job.cwd})`);
+    log(`job ${job.id.slice(0, 8)} starting: ${path.basename(bin)} -p (cwd ${job.cwd})`);
 
     let child: ChildProcess;
     try {
@@ -245,13 +236,7 @@ export class JobManager {
         if (!t) return;
         rt.stderrTail.push(t);
         if (rt.stderrTail.length > 20) rt.stderrTail.shift();
-        if (job.mode === 'cloud') this.cloudLine(job, rt, t, 'system');
-        else this.addEvent(job, { type: 'error', text: truncate(t, 1000) });
-        return;
-      }
-      if (job.mode === 'cloud') {
-        const t = stripAnsi(line).trim();
-        if (t) this.cloudLine(job, rt, t, 'text');
+        this.addEvent(job, { type: 'error', text: truncate(t, 1000) });
         return;
       }
       const parsed = parseStreamLine(line);
@@ -314,16 +299,6 @@ export class JobManager {
         job.status = 'failed';
         job.error = spawnError;
         this.addEvent(job, { type: 'error', text: spawnError });
-      } else if (job.mode === 'cloud') {
-        if (code === 0) {
-          job.status = 'succeeded';
-          job.resultText = job.cloudUrl ? `Cloud session started: ${job.cloudUrl}` : rt.outputTail.slice(-10).join('\n') || 'Cloud task submitted';
-          this.addEvent(job, { type: 'result', text: job.resultText });
-        } else {
-          job.status = 'failed';
-          job.error = `claude --cloud exited with code ${code ?? signal}${rt.stderrTail.length ? ': ' + truncate(rt.stderrTail.slice(-3).join(' | '), 300) : ''}`;
-          this.addEvent(job, { type: 'error', text: job.error });
-        }
       } else if (rt.sawResult) {
         job.status = resultOk ? 'succeeded' : 'failed';
         if (resultOk) job.error = null;
@@ -347,20 +322,6 @@ export class JobManager {
       finish(null, null, code === 'ENOENT' ? CLAUDE_MISSING : `Could not start claude: ${errMsg(e)}`);
     });
     child.on('close', (code, signal) => finish(code, signal));
-  }
-
-  private cloudLine(job: Job, rt: Runtime, text: string, type: 'text' | 'system'): void {
-    rt.outputTail.push(text);
-    if (rt.outputTail.length > 20) rt.outputTail.shift();
-    if (!job.cloudUrl) {
-      const m = CLOUD_URL_RE.exec(text);
-      if (m) {
-        job.cloudUrl = m[0].replace(/[.,;]+$/, '');
-        this.persist(job);
-        this.emit(job.id, { kind: 'status', job: { ...job } });
-      }
-    }
-    this.addEvent(job, { type, text: truncate(text, 2000) });
   }
 
   cancel(id: string): Job | null {

@@ -2,11 +2,6 @@
 if [ "$1" = "--version" ]; then echo "2.1.295 (Claude Code)"; exit 0; fi
 if [ "$1" = "auth" ]; then echo '{"loggedIn":true,"authMethod":"claude.ai"}'; exit 0; fi
 echo "ARGS: $*" >> "${FAKE_LOG:-/dev/null}"
-if [ "$1" = "--cloud" ]; then
-  echo "Creating cloud session..."
-  echo "View at https://claude.ai/code/session_FAKE123 now"
-  exit 0
-fi
 trap 'echo "got TERM" >&2; exit 143' TERM
 echo '{"type":"system","subtype":"init","session_id":"sess-1234abcd","model":"claude-sonnet","cwd":"'"$PWD"'"}'
 echo 'not json line'

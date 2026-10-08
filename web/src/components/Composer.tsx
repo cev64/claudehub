@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { ArrowUp } from 'lucide-react';
-import type { Job, JobMode, PermissionLevel, Project } from '../../../shared/types';
+import type { Job, PermissionLevel, Project } from '../../../shared/types';
 import { api, ApiError } from '../api';
 import { MODEL_OPTIONS, PERMISSION_OPTIONS, Segmented, Select } from './controls';
 import { toast } from './Toasts';
@@ -11,7 +11,6 @@ export const ROOT_PROJECT = '__root__';
 export interface ComposerPreset {
   projectId?: string | null;
   prompt?: string;
-  mode?: JobMode;
   permission?: PermissionLevel;
   nonce?: number;
 }
@@ -31,7 +30,6 @@ export function Composer({
   const uid = useId();
   const [target, setTarget] = useState<string>(projectId ?? ROOT_PROJECT);
   const [prompt, setPrompt] = useState('');
-  const [mode, setMode] = useState<JobMode>('local');
   const [permission, setPermission] = useState<PermissionLevel>('acceptEdits');
   const [model, setModel] = useState<string>(defaultModel ?? '');
   const [sending, setSending] = useState(false);
@@ -42,7 +40,6 @@ export function Composer({
     if (!preset) return;
     if (preset.projectId !== undefined) setTarget(preset.projectId ?? ROOT_PROJECT);
     if (preset.prompt != null) setPrompt(preset.prompt);
-    if (preset.mode) setMode(preset.mode);
     if (preset.permission) setPermission(preset.permission);
   }, [preset]);
 
@@ -56,12 +53,11 @@ export function Composer({
       const job = await api.createJob({
         projectId: target === ROOT_PROJECT ? null : target,
         prompt: text,
-        mode,
         permission,
         model: model || null,
       });
       setPrompt('');
-      toast(mode === 'cloud' ? 'Cloud session started' : 'Claude is on it', { tone: 'good' });
+      toast('Claude is on it', { tone: 'good' });
       onSent(job);
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Could not start the run', { tone: 'bad' });
@@ -95,16 +91,7 @@ export function Composer({
         onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } }}
       />
       <div className="composer-opts">
-        <Segmented
-          label="Where"
-          size="sm"
-          value={mode}
-          onChange={setMode}
-          options={[{ value: 'local', label: 'On Mac' }, { value: 'cloud', label: 'Cloud' }]}
-        />
-        {mode === 'local' && (
-          <Segmented label="Permission" size="sm" value={permission} onChange={setPermission} options={PERMISSION_OPTIONS} />
-        )}
+        <Segmented label="Permission" size="sm" value={permission} onChange={setPermission} options={PERMISSION_OPTIONS} />
       </div>
       <div className="composer-foot">
         <Select label="Model" value={model} onChange={setModel} options={MODEL_OPTIONS} />

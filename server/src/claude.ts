@@ -17,7 +17,7 @@ export function resolveClaudeBin(): string | null {
   ]);
 }
 
-export const CLAUDE_MISSING = 'Claude CLI not found. Install Claude Code (https://claude.ai/code) or set CLAUDE_BIN.';
+export const CLAUDE_MISSING = 'Claude CLI not found. Install it with: curl -fsSL https://claude.ai/install.sh | bash (or set CLAUDE_BIN).';
 
 // ---------------------------------------------------------------------------------------------
 // stream-json parsing (pure; unit-testable)
@@ -207,7 +207,7 @@ export async function claudeHealth(): Promise<HealthCheck> {
 
 async function computeClaudeHealth(): Promise<HealthCheck> {
   const bin = resolveClaudeBin();
-  if (!bin) return { ok: false, detail: `${CLAUDE_MISSING} Install: npm i -g @anthropic-ai/claude-code` };
+  if (!bin) return { ok: false, detail: CLAUDE_MISSING };
   const env = claudeEnv();
   const v = await run(bin, ['--version'], { timeoutMs: 15_000, env });
   if (!v.ok) return { ok: false, detail: `Claude CLI at ${bin} did not run: ${truncate(v.stderr || v.error || '', 120)}` };

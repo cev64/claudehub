@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  ArrowUpRight, BookOpen, FilePen, FilePlus, FileText, Globe, ListChecks, Search, SquareTerminal, Users, Wrench, X,
+  BookOpen, FilePen, FilePlus, FileText, Globe, ListChecks, Search, SquareTerminal, Users, Wrench, X,
 } from 'lucide-react';
 import type { Job, JobEvent } from '../../../shared/types';
 import { api, ApiError, streamJob } from '../api';
@@ -142,17 +142,12 @@ export function Transcript({ jobId, onJobChange, onContinue }: {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <span className="meta" style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
             <StatusWord tone={st.tone} word={st.word} pulse={live} />
-            <span className="ellipsis">· {job.projectName ?? 'Projects folder'} · {job.mode === 'cloud' ? 'Cloud' : 'On Mac'}</span>
+            <span className="ellipsis">· {job.projectName ?? 'Projects folder'}</span>
           </span>
           {live && (
             <button type="button" className="btn sm" onClick={cancel} disabled={cancelling}>
               <X {...ICON} size={16} />Cancel
             </button>
-          )}
-          {!live && job.cloudUrl && (
-            <a className="btn sm" href={job.cloudUrl} target="_blank" rel="noreferrer noopener">
-              Open in Claude<ArrowUpRight {...ICON} size={16} />
-            </a>
           )}
         </div>
         <div className="prompt-bubble">{job.prompt}</div>
@@ -162,11 +157,6 @@ export function Transcript({ jobId, onJobChange, onContinue }: {
           {job.model && ` · ${cap(job.model)}`}
           {` · ${job.permission === 'acceptEdits' ? 'Edit files' : cap(job.permission)}`}
         </div>
-        {live && job.cloudUrl && (
-          <a className="meta" href={job.cloudUrl} target="_blank" rel="noreferrer noopener" style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-            Open in Claude <ArrowUpRight size={14} strokeWidth={1.75} />
-          </a>
-        )}
       </div>
 
       <div className="transcript" style={{ marginTop: 8 }}>
@@ -181,7 +171,7 @@ export function Transcript({ jobId, onJobChange, onContinue }: {
       </div>
       <div ref={endRef} />
 
-      {!live && job.mode === 'local' && job.sessionId && onContinue && (
+      {!live && job.sessionId && onContinue && (
         <ContinueComposer job={job} onSent={onContinue} />
       )}
     </div>
@@ -219,7 +209,7 @@ function ContinueComposer({ job, onSent }: { job: Job; onSent: (j: Job) => void 
     setSending(true);
     try {
       const j = await api.createJob({
-        projectId: job.projectId, prompt: text.trim(), mode: 'local', permission: job.permission,
+        projectId: job.projectId, prompt: text.trim(), permission: job.permission,
         model: job.model, resumeSessionId: job.sessionId,
       });
       setText('');

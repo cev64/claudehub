@@ -49,7 +49,7 @@ export async function runSuggestion(s: Suggestion): Promise<void> {
     return;
   }
   try {
-    const job = await api.createJob({ projectId: s.projectId, prompt: a.prompt, mode: a.mode, permission: a.permission });
+    const job = await api.createJob({ projectId: s.projectId, prompt: a.prompt, permission: a.permission });
     toast('Claude is on it', { tone: 'good', action: { label: 'View', run: () => navigate('claude', job.id) } });
     bumpData();
   } catch (e) {

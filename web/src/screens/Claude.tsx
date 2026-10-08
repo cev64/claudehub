@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { FolderPlus } from 'lucide-react';
-import type { Job, JobMode, PermissionLevel, Settings } from '../../../shared/types';
+import type { Job, PermissionLevel, Settings } from '../../../shared/types';
 import { api } from '../api';
 import { bumpData, navigate, useFlip, useNow, useReducedMotion, useResource, useWide, type Route } from '../hooks';
 import { firstLine, relTime } from '../format';
@@ -32,7 +32,6 @@ export function ClaudeScreen({ route, settings }: { route: Route; settings: Sett
     return {
       projectId: q.get('project'),
       prompt: q.get('prompt') ?? undefined,
-      mode: (q.get('mode') as JobMode) ?? undefined,
       permission: (q.get('permission') as PermissionLevel) ?? undefined,
     };
   }, [qs]);
@@ -79,7 +78,7 @@ export function ClaudeScreen({ route, settings }: { route: Route; settings: Sett
                         <div className="row-title"><span className="t">{firstLine(j.prompt, 90)}</span></div>
                         <div className="row-meta">
                           <StatusWord tone={s.tone} word={s.word} pulse={live} />
-                          <span className="m">· {j.projectName ?? 'Projects folder'}{j.mode === 'cloud' ? ' · Cloud' : ''}</span>
+                          <span className="m">· {j.projectName ?? 'Projects folder'}</span>
                         </div>
                       </div>
                       <div className="row-end"><span className="w num" style={{ fontSize: 13 }}>{relTime(j.createdAt, now)}</span></div>
