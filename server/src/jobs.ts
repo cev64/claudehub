@@ -6,7 +6,7 @@ import type { Job, JobEvent, JobStreamMessage, NewJobRequest } from '../../share
 import { dataPath } from './config.ts';
 import { CLAUDE_MISSING, parseStreamLine, rateLimitText, resolveClaudeBin, type PartialEvent } from './claude.ts';
 import { recordRateLimit } from './usage.ts';
-import { claudeEnv, log, stripAnsi, truncate, warn, errMsg } from './util.ts';
+import { claudeEnv, log, run, stripAnsi, truncate, warn, errMsg } from './util.ts';
 
 const MAX_CONCURRENT = 2;
 const MAX_JOBS = 200;
@@ -17,6 +17,7 @@ type Listener = (msg: JobStreamMessage) => void;
 
 interface Runtime {
   child?: ChildProcess;
+  clone?: { url: string; onCloned: () => Promise<void> };
   cancelRequested: boolean;
   killTimer?: NodeJS.Timeout;
   stderrTail: string[];
@@ -157,7 +158,10 @@ export class JobManager {
   }
 
   // -- lifecycle --------------------------------------------------------------------------
-  create(req: NewJobRequest, ctx: { projectName: string | null; cwd: string; model: string | null }): Job {
+  create(
+    req: NewJobRequest,
+    ctx: { projectName: string | null; cwd: string; model: string | null; clone?: { url: string; onCloned: () => Promise<void> } },
+  ): Job {
     const job: Job = {
       id: randomUUID(),
       projectId: req.projectId ?? null,
@@ -176,7 +180,7 @@ export class JobManager {
     };
     this.jobs.set(job.id, job);
     this.events.set(job.id, []);
-    this.rt.set(job.id, { cancelRequested: false, stderrTail: [], sawResult: false, lastText: null });
+    this.rt.set(job.id, { cancelRequested: false, stderrTail: [], sawResult: false, lastText: null, clone: ctx.clone });
     this.queue.push(job.id);
     this.persist(job);
     this.prune();
@@ -211,6 +215,28 @@ export class JobManager {
 
     const bin = resolveClaudeBin();
     if (!bin) return this.fail(job, CLAUDE_MISSING);
+    if (rt.clone && !fs.existsSync(job.cwd)) return void this.cloneThenSpawn(job, rt, bin);
+    this.spawnClaude(job, rt, bin);
+  }
+
+  private async cloneThenSpawn(job: Job, rt: Runtime, bin: string): Promise<void> {
+    const { url, onCloned } = rt.clone!;
+    this.addEvent(job, { type: 'system', text: `Cloning ${url.replace(/^https:\/\/github\.com\//, '').replace(/\.git$/, '')} into ${job.cwd}` });
+    const r = await run('git', ['clone', '--', url, job.cwd], { timeoutMs: 10 * 60_000 });
+    if (rt.cancelRequested) {
+      job.status = 'cancelled';
+      job.finishedAt = new Date().toISOString();
+      this.addEvent(job, { type: 'system', text: 'Cancelled' });
+      this.setStatus(job);
+      return this.pump();
+    }
+    if (!r.ok) return this.fail(job, `Clone failed: ${truncate((r.stderr || r.error || '').trim().split('\n').slice(-2).join(' '), 300)}`);
+    rt.clone = undefined;
+    await onCloned().catch((e) => warn('rescan after clone failed:', errMsg(e)));
+    this.spawnClaude(job, rt, bin);
+  }
+
+  private spawnClaude(job: Job, rt: Runtime, bin: string): void {
     if (!fs.existsSync(job.cwd)) return this.fail(job, `Folder not found: ${job.cwd}`);
 
     // A leading dash would be read as a flag.
@@ -345,6 +371,9 @@ export class JobManager {
       kill('SIGTERM');
       rt.killTimer = setTimeout(() => kill('SIGKILL'), 5000);
       log(`job ${id.slice(0, 8)} cancel requested`);
+    } else if (job.status === 'running' && rt?.clone && !rt.cancelRequested) {
+      rt.cancelRequested = true; // still cloning: cloneThenSpawn stops before starting Claude
+      log(`job ${id.slice(0, 8)} cancel requested during clone`);
     }
     return { ...job };
   }

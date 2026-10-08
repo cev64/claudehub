@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Archive, ArrowDownToLine, ArrowUpFromLine, CircleX, Clock, Download, FileDiff, FileQuestion, Gauge, GitMerge, Sparkles,
+  Archive, ArrowDownToLine, ArrowUpFromLine, CircleX, Clock, FileDiff, FileQuestion, Gauge, GitMerge, Globe, RotateCw, Sparkles,
 } from 'lucide-react';
 import type { Health, Project, Suggestion, SuggestionKind, Usage } from '../../../shared/types';
 import { api, ApiError } from '../api';
@@ -10,11 +10,11 @@ import { ActivityChart, Sparkline } from '../components/Charts';
 import { ErrorState, ICON, meterTone, PageHead, projectStatus, Rolling, Skeleton, SkeletonRows, StatusWord } from '../components/bits';
 import { useUsage } from './Usage';
 import { toast } from '../components/Toasts';
-import { runProjectAction, runSuggestion, suggestionLabel } from '../actions';
+import { openOnWeb, repoOf, runProjectAction, runSuggestion, suggestionLabel } from '../actions';
 
 const KIND_ICON: Record<SuggestionKind, typeof Sparkles> = {
   uncommitted: FileDiff, unpushed: ArrowUpFromLine, behind: ArrowDownToLine, 'stale-pr': Clock,
-  'pr-ready': GitMerge, 'ci-failing': CircleX, 'not-cloned': Download, 'no-claude-md': FileQuestion,
+  'pr-ready': GitMerge, 'ci-failing': CircleX, 'no-claude-md': FileQuestion,
   'stale-project': Archive, ai: Sparkles,
 };
 
@@ -33,7 +33,7 @@ export function OverviewScreen({ health }: { health: Health | undefined }) {
       </>
     );
   }
-  const { stats, mostActive, topProjects, activity, suggestions } = ov.data;
+  const { stats, mostActive, topProjects, activity, suggestions, aiSuggestionsAt, aiSuggestionsRunning } = ov.data;
   const total30 = activity.reduce((a, d) => a + d.commits, 0);
 
   return (
@@ -69,7 +69,7 @@ export function OverviewScreen({ health }: { health: Health | undefined }) {
           </div>
         </section>
 
-        <Suggestions list={suggestions} onChanged={ov.reload} />
+        <Suggestions list={suggestions} at={aiSuggestionsAt} running={aiSuggestionsRunning} now={now} onChanged={ov.reload} />
       </div>
     </>
   );
@@ -162,15 +162,26 @@ export function ProjectRow({ p, now }: { p: Project; now: number }) {
   );
 }
 
-function Suggestions({ list, onChanged }: { list: Suggestion[]; onChanged: () => void }) {
+const PERMISSION_WORD = { plan: 'Plan', acceptEdits: 'Edit files', auto: 'Auto' } as const;
+
+function Suggestions({ list, at, running, now, onChanged }: {
+  list: Suggestion[];
+  at: string | null;
+  running: boolean;
+  now: number;
+  onChanged: () => void;
+}) {
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const thinking = asking || running;
+  const next = list.filter(s => s.source === 'claude');
+  const chores = list.filter(s => s.source !== 'claude');
 
   const ask = async () => {
     setAsking(true);
     try {
       const s = await api.aiSuggestions();
-      toast(s.length ? `${plural(s.length, 'suggestion')} from Claude` : 'Claude has nothing to add', { tone: 'good' });
+      toast(s.length ? `${plural(s.length, 'next edit')} from Claude` : 'Claude has nothing to add', { tone: 'good' });
       onChanged();
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'Claude could not answer', { tone: 'bad' });
@@ -185,38 +196,62 @@ function Suggestions({ list, onChanged }: { list: Suggestion[]; onChanged: () =>
     setBusy(null);
   };
 
+  const row = (s: Suggestion) => {
+    const Icon = KIND_ICON[s.kind] ?? Sparkles;
+    const label = suggestionLabel(s);
+    const prompt = s.action?.type === 'prompt' ? s.action : null;
+    const meta = s.source === 'claude'
+      ? [s.projectName, prompt && PERMISSION_WORD[prompt.permission]].filter(Boolean).join(' · ')
+      : s.detail;
+    return (
+      <div key={s.id} className="row">
+        <div className="row-icon" aria-hidden><Icon size={18} strokeWidth={1.75} /></div>
+        <div className="row-main">
+          <div className="row-title"><span className={s.source === 'claude' ? 't clamp-2' : 't'}>{s.title}</span></div>
+          {s.source === 'claude' && s.detail && <div className="row-meta"><span className="m wrap">{s.detail}</span></div>}
+          <div className="row-meta"><span className="m">{meta}</span></div>
+        </div>
+        <div className="row-actions">
+          {prompt && (
+            <button type="button" className="btn sm icon" aria-label="Open on the web" title="Open on the web"
+              onClick={() => openOnWeb(prompt.prompt, repoOf(s.projectId))}>
+              <Globe {...ICON} size={16} />
+            </button>
+          )}
+          {label && (
+            <button type="button" className="btn sm" onClick={() => act(s)} disabled={busy === s.id}>{label}</button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <section className="glass card" aria-labelledby="sug-h">
       <div className="card-head">
-        <h2 id="sug-h" className="card-title">Suggestions</h2>
-        <button type="button" className="btn sm" onClick={ask} disabled={asking}>
-          <Sparkles {...ICON} size={16} className={asking ? 'pulse-icon' : undefined} />
-          {asking ? 'Asking Claude' : 'Ask Claude for suggestions'}
+        <h2 id="sug-h" className="card-title">Next edits</h2>
+        <button type="button" className="btn sm" onClick={ask} disabled={thinking}>
+          {thinking ? <Sparkles {...ICON} size={16} className="pulse-icon" /> : <RotateCw {...ICON} size={16} />}
+          {thinking ? 'Reading recent work' : 'Refresh'}
         </button>
       </div>
-      {list.length === 0 ? (
-        <p className="meta" style={{ margin: '8px 0' }}>Nothing needs attention.</p>
-      ) : (
-        <div className="list">
-          {list.map(s => {
-            const Icon = KIND_ICON[s.kind] ?? Sparkles;
-            const label = suggestionLabel(s);
-            return (
-              <div key={s.id} className="row">
-                <div className="row-icon" aria-hidden><Icon size={18} strokeWidth={1.75} /></div>
-                <div className="row-main">
-                  <div className="row-title"><span className="t">{s.title}</span></div>
-                  <div className="row-meta"><span className="m">{s.source === 'claude' ? `Claude · ${s.detail}` : s.detail}</span></div>
-                </div>
-                {label && (
-                  <button type="button" className="btn sm" onClick={() => act(s)} disabled={busy === s.id}>{label}</button>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      <p className="meta" style={{ margin: '0 0 4px' }}>
+        {thinking
+          ? 'Claude is reading your latest commits and PRs. This takes about a minute.'
+          : at
+            ? `From your most recent work · ${relTime(at, now)}`
+            : 'Claude suggests edits from your most recent work. It refreshes when you push.'}
+      </p>
+      {next.length > 0 && <div className="list">{next.map(row)}</div>}
+      {chores.length > 0 && (
+        <>
+          <span className="micro" style={{ marginTop: 12 }}>Needs attention</span>
+          <div className="list">{chores.map(row)}</div>
+        </>
       )}
-      {asking && <p className="meta" style={{ margin: '8px 0 0' }}>This can take a minute.</p>}
+      {next.length === 0 && chores.length === 0 && !thinking && (
+        <p className="meta" style={{ margin: '8px 0' }}>Nothing yet.</p>
+      )}
     </section>
   );
 }

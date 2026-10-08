@@ -56,10 +56,10 @@ export function ProjectDetailView({ id, settings }: { id: string; settings: Sett
         </div>
       )}
 
-      {local && (
+      {(local || p.github) && (
         <section className="section" aria-label="Ask Claude">
-          <span className="micro">Ask Claude</span>
-          <Composer projectId={p.id} defaultModel={settings?.defaultModel} accent={false} compact
+          <span className="micro">Ask Claude{!local && ' · clones to this Mac first'}</span>
+          <Composer projectId={p.id} repo={p.github?.fullName ?? null} defaultModel={settings?.defaultModel} accent={false} compact
             onSent={job => navigate('claude', job.id)} />
         </section>
       )}

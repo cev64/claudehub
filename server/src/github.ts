@@ -235,3 +235,65 @@ export async function syncGithub(token: string): Promise<GithubData> {
   };
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// Recent work (for Claude's next-edit suggestions)
+
+export interface RecentWork {
+  fullName: string;
+  description: string | null;
+  defaultBranch: string | null;
+  commits: { message: string; date: string }[];
+  pulls: { number: number; title: string; state: string; updatedAt: string; body: string }[];
+  readme: string | null;
+  claudeMd: string | null;
+  files: string[];
+}
+
+const RECENT_FIELDS = `
+  nameWithOwner description
+  defaultBranchRef { name target { ... on Commit { history(first: 15) { nodes { messageHeadline committedDate } } } } }
+  readme: object(expression: "HEAD:README.md") { ... on Blob { text } }
+  claudeMd: object(expression: "HEAD:CLAUDE.md") { ... on Blob { text } }
+  tree: object(expression: "HEAD:") { ... on Tree { entries { name type } } }
+  pullRequests(first: 6, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title state updatedAt body } }`;
+
+interface RecentNode {
+  nameWithOwner: string;
+  description: string | null;
+  defaultBranchRef: { name: string; target: { history?: { nodes: { messageHeadline: string; committedDate: string }[] } } | null } | null;
+  readme: { text?: string | null } | null;
+  claudeMd: { text?: string | null } | null;
+  tree: { entries?: { name: string; type: string }[] } | null;
+  pullRequests: { nodes: ({ number: number; title: string; state: string; updatedAt: string; body: string | null } | null)[] };
+}
+
+const clip = (s: string | null | undefined, n: number) => (s ? (s.length > n ? s.slice(0, n) + '…' : s) : null);
+
+/** Latest commits, PRs, README, CLAUDE.md and top-level files for a few repos, in one GraphQL call. */
+export async function fetchRecentWork(token: string, fullNames: string[]): Promise<RecentWork[]> {
+  if (!fullNames.length) return [];
+  const parts = fullNames.map((full, i) => {
+    const [owner, name] = full.split('/');
+    return `r${i}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { ${RECENT_FIELDS} }`;
+  });
+  const data = await gql<Record<string, RecentNode | null>>(token, `query { ${parts.join('\n')} }`);
+  const out: RecentWork[] = [];
+  for (let i = 0; i < fullNames.length; i++) {
+    const n = data[`r${i}`];
+    if (!n) continue;
+    out.push({
+      fullName: n.nameWithOwner,
+      description: n.description,
+      defaultBranch: n.defaultBranchRef?.name ?? null,
+      commits: (n.defaultBranchRef?.target?.history?.nodes ?? []).map((c) => ({ message: c.messageHeadline, date: c.committedDate.slice(0, 10) })),
+      pulls: n.pullRequests.nodes.filter((p): p is NonNullable<typeof p> => !!p).map((p) => ({
+        number: p.number, title: p.title, state: p.state.toLowerCase(), updatedAt: p.updatedAt.slice(0, 10), body: clip(p.body, 400) ?? '',
+      })),
+      readme: clip(n.readme?.text, 2500),
+      claudeMd: clip(n.claudeMd?.text, 2000),
+      files: (n.tree?.entries ?? []).map((e) => (e.type === 'tree' ? `${e.name}/` : e.name)).slice(0, 60),
+    });
+  }
+  return out;
+}

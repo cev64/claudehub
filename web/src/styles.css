@@ -446,6 +446,9 @@ button.row:hover, a.row:hover { background: var(--fill); color: inherit; }
 .row-end .k { font-size: 16px; line-height: 22px; font-weight: 500; color: var(--ink); }
 .row-end .w { font-size: 12px; line-height: 16px; color: var(--ink-3); }
 .row-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--fill); display: flex; align-items: center; justify-content: center; color: var(--ink-2); flex-shrink: 0; }
+.row-meta > .m.wrap { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.row-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+.btn.sm.icon { width: 36px; padding: 0; justify-content: center; }
 
 /* ---------- Grids ---------- */
 

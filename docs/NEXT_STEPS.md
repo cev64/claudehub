@@ -33,7 +33,11 @@ Done: every row checked, fixes committed.
 - Cloud runs removed: `claude --cloud` exits with "requires an interactive terminal", and under
   a pseudo-terminal it stops at the folder-trust prompt. Cloud sessions are started from
   claude.ai/code instead.
-- Still open: reboot, Clone, New project, usage capture, a push from an *Auto* run.
+- Also passed later: New project (local only now), a push from an *Auto* run, clone-before-run on a
+  GitHub-only repo, next-edit suggestions generated automatically after a sync.
+- Remote Control runs as `com.claudehub.remote-control` in `~/Desktop/DEV` (no TTY needed once the
+  first-run questions are answered by hand).
+- Still open: reboot (both services should come back), usage capture.
 
 ## 2. Supabase relay (use the dashboard away from home without Tailscale)
 
@@ -105,5 +109,3 @@ watch it stream, create a new project.
 ## 3. Later
 
 - Push notifications when a run finishes or CI fails (web push from the hosted dashboard).
-- Remote Control as a second LaunchAgent (`claude remote-control --name "Mac Mini"`) once the
-  one-time trust prompt is accepted interactively.

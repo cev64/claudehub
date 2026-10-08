@@ -90,7 +90,7 @@ export interface PullRequest {
 
 export type SuggestionKind =
   | 'uncommitted' | 'unpushed' | 'behind' | 'stale-pr' | 'pr-ready' | 'ci-failing'
-  | 'not-cloned' | 'no-claude-md' | 'stale-project' | 'ai';
+  | 'no-claude-md' | 'stale-project' | 'ai';
 
 export type SuggestionAction =
   | { type: 'prompt'; prompt: string; permission: PermissionLevel }
@@ -131,8 +131,9 @@ export interface Overview {
   mostActive: Project | null;
   topProjects: Project[];       // up to 5 by activityScore
   activity: DayCount[];         // last 30 days, all projects
-  suggestions: Suggestion[];    // rules + cached Claude suggestions, sorted by priority
+  suggestions: Suggestion[];    // rules + cached Claude next edits, sorted by priority
   aiSuggestionsAt: string | null;
+  aiSuggestionsRunning: boolean; // Claude is reading recent work right now (refreshes on its own when activity changes)
 }
 
 // Jobs run `claude -p` in the repo on the Mac.
@@ -301,11 +302,11 @@ POST /api/projects/:id/actions        body { action: ProjectAction } -> ActionRe
 GET  /api/pulls?state=open|all        -> PullRequest[]
 POST /api/refresh                     -> { ok: true }       (starts a rescan; poll /api/health.scanning)
 GET  /api/jobs                        -> Job[]              (newest first, no events)
-POST /api/jobs                        body NewJobRequest -> Job
+POST /api/jobs                        body NewJobRequest -> Job  (clones a GitHub-only project into the projects folder first)
 GET  /api/jobs/:id                    -> Job (with events)
 GET  /api/jobs/:id/stream             -> text/event-stream of JobStreamMessage
 POST /api/jobs/:id/cancel             -> Job
-POST /api/suggestions/ai              -> Suggestion[]       (asks Claude over the current overview; may take ~1 min)
+POST /api/suggestions/ai              -> Suggestion[]       (Claude reads recent work on the latest projects; ~1 min)
 GET  /api/usage                       -> Usage
 POST /api/usage/statusline            body { enabled: boolean } -> ActionResult   (installs/removes the capture script)
 GET  /api/settings                    -> Settings

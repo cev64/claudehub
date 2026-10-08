@@ -161,7 +161,8 @@ const MISSING_HTML = `<!doctype html><meta charset="utf-8"><meta name="viewport"
 <body style="font:16px system-ui;background:#111;color:#eee;display:grid;place-items:center;height:100vh;margin:0"><div><h1>ClaudeHub agent is running</h1><p>The web app is not built yet. Run <code>npm run build</code>, then reload.</p></div></body>`;
 
 if (hasWeb) {
-  await app.register(fastifyStatic, { root: WEB_DIR, wildcard: false });
+  // wildcard: look files up per request, so a rebuild (new hashed assets) works without a restart.
+  await app.register(fastifyStatic, { root: WEB_DIR, wildcard: true });
 }
 app.setNotFoundHandler((req, reply) => {
   if (req.method === 'GET' && !req.url.startsWith('/api')) {

@@ -10,7 +10,7 @@ import { scanAll, scanRepo, type LocalScan } from './scanner.ts';
 import { commitList } from './git.ts';
 import { NO_TOKEN_HELP, resolveToken, syncGithub, type GithubData } from './github.ts';
 import { buildSnapshot, emptySnapshot, type Snapshot } from './merge.ts';
-import { aiSuggestions, aiSuggestionsAt, generateAiSuggestions, ruleSuggestions } from './suggestions.ts';
+import { aiSuggestions, aiSuggestionsAt, aiSuggestionsRunning, generateAiSuggestions, maybeAutoGenerate, ruleSuggestions } from './suggestions.ts';
 import { JobManager } from './jobs.ts';
 import { claudeHealth } from './claude.ts';
 import { runProjectAction } from './actions.ts';
@@ -102,6 +102,7 @@ export class Hub {
     log(`scan: ${scans.length} repos in ${Date.now() - t0}ms`);
     await this.syncGithubSafe();
     this.lastScanAt = new Date().toISOString();
+    maybeAutoGenerate(this.snapshot, this.settings.projectsDir);
   }
 
   private async syncGithubSafe(): Promise<void> {
@@ -198,6 +199,7 @@ export class Hub {
       activity,
       suggestions,
       aiSuggestionsAt: aiSuggestionsAt(),
+      aiSuggestionsRunning: aiSuggestionsRunning(),
     };
   }
 
@@ -234,16 +236,25 @@ export class Hub {
     if (!['plan', 'acceptEdits', 'auto'].includes(req.permission)) throw new HttpError(400, 'permission must be plan, acceptEdits or auto.');
     let cwd = this.settings.projectsDir;
     let name: string | null = null;
+    let cloneUrl: string | null = null;
     const prompt = req.prompt.trim();
     if (req.projectId) {
       const p = this.findProject(req.projectId);
       if (!p) throw new HttpError(404, 'Unknown project');
-      if (!p.local) throw new HttpError(400, `${p.name} is not cloned on this Mac. Clone it first.`);
       name = p.name;
-      cwd = p.local.path;
+      if (p.local) cwd = p.local.path;
+      else if (p.github) {
+        // Not on this Mac yet: the job clones it into the projects folder first.
+        cwd = path.join(this.settings.projectsDir, p.name);
+        if (fs.existsSync(cwd)) throw new HttpError(409, `${cwd} already exists but isn't ${p.github.fullName}. Move it or clone by hand.`);
+        cloneUrl = `${p.github.url}.git`;
+      } else throw new HttpError(400, `${p.name} has no folder on this Mac.`);
     }
     const model = req.model === undefined ? this.settings.defaultModel : req.model || null;
-    return this.jobs.create({ ...req, prompt }, { projectName: name, cwd, model });
+    return this.jobs.create({ ...req, prompt }, {
+      projectName: name, cwd, model,
+      clone: cloneUrl ? { url: cloneUrl, onCloned: () => this.rescanPath(cwd) } : undefined,
+    });
   }
 
   async createProject(req: NewProjectRequest): Promise<NewProjectResult> {
@@ -291,9 +302,8 @@ export class Hub {
     return { ok: true, message, project, job };
   }
 
-  async aiSuggest(): Promise<Suggestion[]> {
-    const ov = this.overview();
-    return generateAiSuggestions(this.snapshot, ov, this.settings.projectsDir);
+  aiSuggest(): Promise<Suggestion[]> {
+    return generateAiSuggestions(this.snapshot, this.settings.projectsDir);
   }
 
   // -- usage ------------------------------------------------------------------------------

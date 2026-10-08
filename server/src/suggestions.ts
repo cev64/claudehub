@@ -1,8 +1,12 @@
-import type { Overview, Project, Suggestion } from '../../shared/types.ts';
+import fs from 'node:fs';
+import path from 'node:path';
+import type { Project, Suggestion } from '../../shared/types.ts';
 import type { Snapshot } from './merge.ts';
 import { readJson, writeJson } from './store.ts';
 import { extractJsonObject, runClaudeJson } from './claude.ts';
-import { daysSince, truncate } from './util.ts';
+import { fetchRecentWork, resolveToken, type RecentWork } from './github.ts';
+import { git } from './git.ts';
+import { daysSince, errMsg, log, truncate, warn } from './util.ts';
 
 const DAY = 86_400_000;
 const CAP = 12;
@@ -76,18 +80,6 @@ export function ruleSuggestions(snap: Snapshot, now = Date.now()): Suggestion[] 
         });
       }
     }
-    if (p.github && !p.local && !p.github.archived) {
-      const pushed = daysSince(p.github.pushedAt, now);
-      if (pushed !== null && pushed <= 30) {
-        add(p, {
-          kind: 'not-cloned',
-          title: 'Repo not cloned',
-          detail: `${p.github.fullName} had activity ${pushed < 1 ? 'today' : `${Math.floor(pushed)} days ago`} but is not on this Mac.`,
-          priority: 3,
-          action: { type: 'project-action', action: 'clone' },
-        });
-      }
-    }
   }
 
   for (const pr of snap.pulls) {
@@ -149,74 +141,157 @@ export function ruleSuggestions(snap: Snapshot, now = Date.now()): Suggestion[] 
 }
 
 // ---------------------------------------------------------------------------------------------
-// AI suggestions
+// Claude suggestions: next edits based on the most recently worked-on projects
 
-interface AiCache { generatedAt: string; suggestions: Suggestion[] }
+interface AiCache { generatedAt: string; fingerprint?: string; suggestions: Suggestion[] }
+
+const RECENT_PROJECTS = 5;
+const MIN_AUTO_GAP = 20 * 60_000; // at most one automatic generation every 20 minutes
 
 let aiCache: AiCache | null = readJson<AiCache>('ai-suggestions.json');
+let aiInFlight: Promise<Suggestion[]> | null = null;
+let lastAutoAttempt = 0;
 
 export function aiSuggestions(): Suggestion[] { return aiCache?.suggestions ?? []; }
 export function aiSuggestionsAt(): string | null { return aiCache?.generatedAt ?? null; }
+export function aiSuggestionsRunning(): boolean { return aiInFlight !== null; }
 
 const SCHEMA = {
   type: 'object',
   properties: {
     suggestions: {
       type: 'array',
-      maxItems: 6,
+      maxItems: 8,
       items: {
         type: 'object',
         properties: {
-          projectId: { type: ['string', 'null'] },
+          projectId: { type: 'string' },
           title: { type: 'string' },
           detail: { type: 'string' },
           priority: { type: 'integer', minimum: 1, maximum: 3 },
+          permission: { type: 'string', enum: ['plan', 'acceptEdits', 'auto'] },
           prompt: { type: 'string' },
         },
-        required: ['projectId', 'title', 'detail', 'priority', 'prompt'],
+        required: ['projectId', 'title', 'detail', 'priority', 'permission', 'prompt'],
       },
     },
   },
   required: ['suggestions'],
 };
 
-let aiInFlight: Promise<Suggestion[]> | null = null;
+/** The projects worked on most recently (last 30 days), newest first. */
+export function recentProjects(snap: Snapshot, now = Date.now()): Project[] {
+  return snap.projects
+    .filter((p) => !p.github?.archived && p.lastActivityAt && now - Date.parse(p.lastActivityAt) <= 30 * DAY)
+    .sort((a, b) => Date.parse(b.lastActivityAt!) - Date.parse(a.lastActivityAt!))
+    .slice(0, RECENT_PROJECTS);
+}
 
-export function generateAiSuggestions(snap: Snapshot, overview: Overview, cwd: string): Promise<Suggestion[]> {
+function fingerprint(projects: Project[]): string {
+  return projects
+    .map((p) => `${p.id}@${p.lastActivityAt}:${p.github?.openPRs ?? 0}:${p.local ? p.local.dirtyFiles + p.local.untrackedFiles : '-'}`)
+    .join('|');
+}
+
+/** Regenerate in the background when recent activity changed. Never throws. */
+export function maybeAutoGenerate(snap: Snapshot, cwd: string): void {
+  const recent = recentProjects(snap);
+  if (!recent.length || aiInFlight) return;
+  const fp = fingerprint(recent);
+  if (aiCache?.fingerprint === fp) return;
+  if (Date.now() - lastAutoAttempt < MIN_AUTO_GAP) return;
+  lastAutoAttempt = Date.now();
+  log(`suggestions: recent work changed, asking Claude for next edits`);
+  generateAiSuggestions(snap, cwd).then(
+    (s) => log(`suggestions: ${s.length} next edits from Claude`),
+    (e) => warn('suggestions: Claude run failed:', errMsg(e)),
+  );
+}
+
+export function generateAiSuggestions(snap: Snapshot, cwd: string): Promise<Suggestion[]> {
   if (aiInFlight) return aiInFlight;
-  aiInFlight = doGenerate(snap, overview, cwd).finally(() => { aiInFlight = null; });
+  aiInFlight = doGenerate(snap, cwd).finally(() => { aiInFlight = null; });
   return aiInFlight;
 }
 
-async function doGenerate(snap: Snapshot, overview: Overview, cwd: string): Promise<Suggestion[]> {
-  const summary = {
-    today: new Date().toISOString().slice(0, 10),
-    projects: snap.projects.slice(0, 40).map((p) => ({
-      id: p.id,
-      status: p.status,
-      stack: p.stack,
-      commits30: p.commitsLast30,
-      lastActivity: p.lastActivityAt?.slice(0, 10) ?? null,
-      description: p.description ? truncate(p.description, 100) : null,
-      cloned: Boolean(p.local),
-      dirtyFiles: p.local ? p.local.dirtyFiles + p.local.untrackedFiles : 0,
-      ahead: p.local?.ahead ?? 0,
-      behind: p.local?.behind ?? 0,
-      hasClaudeMd: p.local?.hasClaudeMd ?? null,
-      openPRs: p.github?.openPRs ?? 0,
-      openIssues: p.github?.openIssues ?? 0,
-    })),
-    openPullRequests: snap.pulls
-      .filter((p) => p.state === 'open')
-      .slice(0, 25)
-      .map((p) => ({ project: p.projectId, number: p.number, title: truncate(p.title, 80), mine: p.isMine, checks: p.checks, review: p.reviewDecision, updated: p.updatedAt.slice(0, 10) })),
-    existingSuggestions: overview.suggestions.filter((s) => s.source === 'rules').map((s) => `${s.projectId ?? '-'}: ${s.title}`),
+async function localContext(p: Project) {
+  const dir = p.local!.path;
+  const [log, status, diff] = await Promise.all([
+    git(dir, ['log', '-n', '12', '--format=%as %s']),
+    git(dir, ['status', '--short']),
+    git(dir, ['diff', '--stat', 'HEAD']),
+  ]);
+  const read = (f: string, n: number) => {
+    try { const t = fs.readFileSync(path.join(dir, f), 'utf8'); return t.length > n ? t.slice(0, n) + '…' : t; } catch { return null; }
   };
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.name !== '.git')
+      .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
+      .slice(0, 60);
+  } catch { /* unreadable */ }
+  return {
+    branch: p.local!.branch,
+    recentCommits: log.ok ? log.stdout.split('\n').filter(Boolean) : [],
+    uncommitted: status.ok ? status.stdout.split('\n').filter(Boolean).slice(0, 30) : [],
+    diffStat: diff.ok ? truncate(diff.stdout.trim(), 1500) : '',
+    readme: read('README.md', 2500),
+    claudeMd: read('CLAUDE.md', 2000),
+    files,
+  };
+}
+
+async function doGenerate(snap: Snapshot, cwd: string): Promise<Suggestion[]> {
+  const recent = recentProjects(snap);
+  const fp = fingerprint(recent);
+  if (!recent.length) {
+    aiCache = { generatedAt: new Date().toISOString(), fingerprint: fp, suggestions: [] };
+    writeJson('ai-suggestions.json', aiCache);
+    return [];
+  }
+
+  const token = await resolveToken();
+  const onGithub = recent.filter((p) => p.github).map((p) => p.github!.fullName);
+  let remote: RecentWork[] = [];
+  if (token && onGithub.length) {
+    try { remote = await fetchRecentWork(token, onGithub); } catch (e) { warn('suggestions: GitHub recent work failed:', errMsg(e)); }
+  }
+  const byName = new Map(remote.map((r) => [r.fullName.toLowerCase(), r]));
+
+  const projects = await Promise.all(recent.map(async (p) => {
+    const gh = p.github ? byName.get(p.github.fullName.toLowerCase()) : undefined;
+    const local = p.local ? await localContext(p) : null;
+    return {
+      projectId: p.id,
+      name: p.name,
+      description: p.description,
+      stack: p.stack,
+      lastActivity: p.lastActivityAt?.slice(0, 10) ?? null,
+      onThisMac: Boolean(p.local),
+      github: gh ? {
+        repo: gh.fullName,
+        defaultBranch: gh.defaultBranch,
+        recentCommits: gh.commits.map((c) => `${c.date} ${c.message}`),
+        recentPullRequests: gh.pulls.map((r) => ({ number: r.number, title: r.title, state: r.state, updated: r.updatedAt, body: r.body })),
+        files: gh.files,
+        readme: gh.readme,
+        claudeMd: gh.claudeMd,
+      } : null,
+      local: local ? { ...local, readme: gh?.readme ? null : local.readme, claudeMd: gh?.claudeMd ? null : local.claudeMd } : null,
+    };
+  }));
+
   const prompt =
-    `You are helping a developer decide what to work on next. Below is a JSON summary of their projects, open pull requests and suggestions that were already generated by simple rules.\n` +
-    `Propose up to 6 concrete, high-value next steps that go beyond the existing suggestions. Each needs: projectId (one of the project ids above, or null), a short noun-first title, ` +
-    `one calm sentence of detail (no exclamation marks), a priority 1 (most important) to 3, and a self-contained prompt that Claude Code could run inside that project to start on it. ` +
-    `Respond only with JSON matching the schema.\n\n${JSON.stringify(summary)}`;
+    `You are helping a solo developer pick their next edits. Below are the ${projects.length} projects they worked on most recently, ` +
+    `newest first, with recent commits, pull requests, uncommitted changes, file lists, README and CLAUDE.md.\n\n` +
+    `Propose up to 8 next edits, 1 or 2 per project, favouring the most recent projects. Each should build directly on what they were just doing: ` +
+    `finish an open thread, fix a rough edge the commits hint at, add a missing test, polish UI they just touched, or commit/clean up uncommitted work. ` +
+    `Be specific to this code (name files, screens or features you can see); never suggest generic chores like "add CI" or "write docs" unless the evidence points there.\n\n` +
+    `For each: projectId (exactly as given), a short noun-first title (max 60 characters), one calm sentence of detail saying why now (no exclamation marks), ` +
+    `priority 1 (do first) to 3, permission ("plan" if it needs investigation or a decision first, "acceptEdits" for edits, "auto" if it must run commands such as tests or builds), ` +
+    `and a self-contained prompt for Claude Code running inside that project's folder: state the goal, the relevant files, and how to check the result. ` +
+    `Respond only with JSON matching the schema. Do not use any tools; everything you need is below.\n\n${JSON.stringify(projects)}`;
   const res = await runClaudeJson(prompt, { cwd, model: 'sonnet', schema: SCHEMA, timeoutMs: 5 * 60_000 });
   let parsed: any = res.structured;
   if (!parsed && res.text) parsed = extractJsonObject(res.text);
@@ -224,10 +299,11 @@ async function doGenerate(snap: Snapshot, overview: Overview, cwd: string): Prom
   if (!list) throw new Error('Claude did not return suggestions in the expected format.');
   const ids = new Map(snap.projects.map((p) => [p.id, p]));
   const suggestions: Suggestion[] = [];
-  for (const [i, s] of list.slice(0, 6).entries()) {
+  for (const [i, s] of list.slice(0, 8).entries()) {
     if (!s || typeof s.title !== 'string' || typeof s.prompt !== 'string') continue;
-    const project = typeof s.projectId === 'string' ? ids.get(s.projectId.toLowerCase()) ?? ids.get(s.projectId) ?? null : null;
+    const project = typeof s.projectId === 'string' ? ids.get(s.projectId) ?? ids.get(s.projectId.toLowerCase()) ?? null : null;
     const pr = Number(s.priority);
+    const permission = s.permission === 'plan' || s.permission === 'auto' ? s.permission : 'acceptEdits';
     suggestions.push({
       id: `ai:${i}:${project?.id ?? 'none'}`,
       kind: 'ai',
@@ -236,11 +312,11 @@ async function doGenerate(snap: Snapshot, overview: Overview, cwd: string): Prom
       title: truncate(s.title, 80),
       detail: truncate(String(s.detail ?? ''), 200),
       priority: pr === 1 || pr === 2 || pr === 3 ? pr : 2,
-      action: { type: 'prompt', prompt: s.prompt, permission: 'plan' },
+      action: { type: 'prompt', prompt: s.prompt, permission },
       source: 'claude',
     });
   }
-  aiCache = { generatedAt: new Date().toISOString(), suggestions };
+  aiCache = { generatedAt: new Date().toISOString(), fingerprint: fp, suggestions };
   writeJson('ai-suggestions.json', aiCache);
   return suggestions;
 }

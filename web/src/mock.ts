@@ -193,7 +193,9 @@ const listeners = new Map<string, Set<(m: JobStreamMessage) => void>>();
 
 function scriptFor(req: NewJobRequest, cwd: string): Omit<JobEvent, 'ts'>[] {
   const where = cwd.replace(/^\/Users\/[^/]+/, '~');
+  const project = req.projectId ? projects.find(p => p.id === req.projectId) : null;
   const s: Omit<JobEvent, 'ts'>[] = [
+    ...(project && !project.local && project.github ? [{ type: 'system' as const, text: `Cloning ${project.github.fullName} into ${where}` }] : []),
     { type: 'system', text: `Session started in ${where}` },
     { type: 'text', text: "I'll look at how the project is laid out first." },
     { type: 'tool', tool: 'Glob', text: 'src/**/*.{ts,tsx}' },
@@ -216,7 +218,7 @@ function scriptFor(req: NewJobRequest, cwd: string): Omit<JobEvent, 'ts'>[] {
 
 function makeJob(req: NewJobRequest, ago: number, status: Job['status'], doneSteps?: number): MockJob {
   const project = req.projectId ? projects.find(p => p.id === req.projectId) : null;
-  const cwd = project?.local?.path ?? ROOT;
+  const cwd = project?.local?.path ?? (project ? `${ROOT}/${project.name}` : ROOT);
   const id = `job_${Math.random().toString(36).slice(2, 10)}`;
   const script = scriptFor(req, cwd);
   const created = Date.now() - ago;
@@ -331,18 +333,32 @@ const ruleSuggestions: Suggestion[] = [
     action: { type: 'link', url: 'https://github.com/cev64/budget-android/pull/7' },
   },
   {
-    id: 's5', kind: 'not-cloned', projectId: 'cev64/bracketeer', projectName: 'bracketeer', priority: 3, source: 'rules',
-    title: 'Not on the Mac', detail: 'bracketeer · pushed 19d ago',
-    action: { type: 'project-action', action: 'clone' },
-  },
-  {
     id: 's6', kind: 'no-claude-md', projectId: 'local:scratch-notes', projectName: 'scratch-notes', priority: 3, source: 'rules',
     title: 'No CLAUDE.md', detail: 'scratch-notes',
     action: { type: 'prompt', prompt: 'Create a concise CLAUDE.md for this repository.', permission: 'acceptEdits' },
   },
 ];
-let aiSuggestions: Suggestion[] = [];
-let aiAt: string | null = null;
+function mockNextEdits(): Suggestion[] {
+  return [
+    {
+      id: 'ai1', kind: 'ai', projectId: 'cev64/claudehub', projectName: 'claudehub', priority: 1, source: 'claude',
+      title: 'Show clone progress in the run view', detail: 'The last commits added clone-before-run, but the transcript only says "Cloning".',
+      action: { type: 'prompt', prompt: 'In web/src/components/Transcript.tsx, show a calm progress line while a run is cloning its repo. Check it at ?mock=1.', permission: 'acceptEdits' },
+    },
+    {
+      id: 'ai2', kind: 'ai', projectId: 'cev64/budget-app', projectName: 'budget-app', priority: 2, source: 'claude',
+      title: 'Test the theme setting', detail: 'The theme switch landed yesterday without tests.',
+      action: { type: 'prompt', prompt: 'Add tests for the System / Light / Dark theme setting in src/state/settings.ts, then run npm test.', permission: 'auto' },
+    },
+    {
+      id: 'ai3', kind: 'ai', projectId: 'cev64/bracketeer', projectName: 'bracketeer', priority: 2, source: 'claude',
+      title: 'Finish the seeding screen', detail: 'Recent commits stub out seeding but the screen is still empty.',
+      action: { type: 'prompt', prompt: 'Look at the recent seeding commits and propose how to finish the seeding screen. Do not change files yet.', permission: 'plan' },
+    },
+  ];
+}
+let aiAt: string | null = new Date(Date.now() - 2 * 3_600_000).toISOString();
+let aiSuggestions: Suggestion[] = mockNextEdits();
 
 function stats(): Overview['stats'] {
   return {
@@ -370,6 +386,7 @@ function overview(): Overview {
     activity: activity(),
     suggestions: [...aiSuggestions, ...ruleSuggestions].sort((a, b) => a.priority - b.priority),
     aiSuggestionsAt: aiAt,
+    aiSuggestionsRunning: false,
   };
 }
 
@@ -626,18 +643,7 @@ export async function mockRequest(method: string, path: string, body: unknown): 
     case 'POST suggestions': {
       await wait(2600);
       aiAt = new Date().toISOString();
-      aiSuggestions = [
-        {
-          id: 'ai1', kind: 'ai', projectId: 'cev64/claudehub', projectName: 'claudehub', priority: 2, source: 'claude',
-          title: 'Add tests for the repo scanner', detail: 'claudehub · scanner has no coverage for nested repos',
-          action: { type: 'prompt', prompt: 'Add tests for the repo scanner, including nested repos and scan depth.', permission: 'acceptEdits' },
-        },
-        {
-          id: 'ai2', kind: 'ai', projectId: 'cev64/league-history', projectName: 'league-history', priority: 3, source: 'claude',
-          title: 'Merge or close #12', detail: 'league-history · open 18 days, checks passing',
-          action: { type: 'link', url: 'https://github.com/cev64/league-history/pull/12' },
-        },
-      ];
+      aiSuggestions = mockNextEdits();
       return aiSuggestions;
     }
     case 'GET usage': return usage();

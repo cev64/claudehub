@@ -24,6 +24,46 @@ export async function runProjectAction(projectId: string, action: ProjectAction)
   }
 }
 
+export const WEB_URL = 'https://claude.ai/code';
+
+/** Copy text: the Mac app's bridge if present, else the Clipboard API, else a hidden textarea. */
+export function copyText(text: string): Promise<boolean> {
+  const bridge = (window as { webkit?: { messageHandlers?: { copy?: { postMessage: (t: string) => void } } } }).webkit?.messageHandlers?.copy;
+  if (bridge) {
+    try { bridge.postMessage(text); return Promise.resolve(true); } catch { /* fall through */ }
+  }
+  const legacy = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { /* unsupported */ }
+    ta.remove();
+    return ok;
+  };
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text).then(() => true, legacy);
+  return Promise.resolve(legacy());
+}
+
+/** Claude Code on the web: copy the prompt, open claude.ai/code. Call straight from a click. */
+export function openOnWeb(prompt: string, repo: string | null): void {
+  const copied = copyText(prompt);
+  window.open(WEB_URL, '_blank', 'noopener');
+  void copied.then(ok => toast(
+    ok ? `Prompt copied${repo ? `. Pick ${repo} and paste it` : '. Paste it'} on claude.ai/code` : `Opened claude.ai/code${repo ? `. Pick ${repo}` : ''}`,
+    { tone: 'good' },
+  ));
+}
+
+/** GitHub repo name for a project id ("cev64/x"), or null for local-only projects. */
+export function repoOf(projectId: string | null): string | null {
+  return projectId && !projectId.startsWith('local:') ? projectId : null;
+}
+
 export function suggestionLabel(s: Suggestion): string | null {
   const a = s.action;
   if (!a) return null;
