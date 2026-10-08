@@ -108,3 +108,5 @@ overrides: `PROJECTS_DIR`, `PORT`, `HOST`, `CLAUDEHUB_TOKEN`, `GITHUB_TOKEN`, `C
 - Supabase relay: the `claudehub` schema exists in the Budget project
   (`supabase/migrations/`), but the agent and dashboard don't use it yet. Until then, reach the
   dashboard from other devices with Tailscale.
+- What's left to build and verify, and how: [`docs/NEXT_STEPS.md`](docs/NEXT_STEPS.md). Repo
+  guide for Claude Code: [`CLAUDE.md`](CLAUDE.md).
