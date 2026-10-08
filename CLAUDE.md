@@ -21,6 +21,9 @@ needs an interactive terminal). What's left to build is in `docs/NEXT_STEPS.md`.
 - `scripts/statusline.mjs`: Claude Code status line command (plain Node, no deps, never fails). Saves the JSON Claude Code pipes in to `~/.claudehub/statusline/`, then runs the user's previous status line (`chain.json`) or prints a short default.
 - `scripts/install-mac.sh` / `uninstall-mac.sh`: launchd agent `com.claudehub.agent`, logs in
   `~/.claudehub/agent.log`.
+- `scripts/install-remote-control.sh`: launchd service `com.claudehub.remote-control` running
+  `claude remote-control --spawn same-dir` in the projects folder (sessions from the Claude app).
+- `mac/` + `scripts/build-mac-app.sh`: ClaudeHub.app, a native AppKit + WKWebView window onto the agent at :4317 (swiftc, no Xcode project; `--install` copies it to `~/Applications`). User agent ends in `ClaudeHubMac/1.0`; `window.webkit.messageHandlers.copy.postMessage(text)` copies without a user gesture.
 - `supabase/migrations/`: the `claudehub` schema in the **Budget** Supabase project
   (`sygxozspiszqfawkmpzx`), shared with the budget app (`public`) and bet tracker (`betting`).
   Never touch tables outside the `claudehub` schema.

@@ -47,6 +47,27 @@ automatically (System Settings → Users & Groups) so the agent comes back after
 
 Logs: `~/.claudehub/agent.log`. Stop it with `./scripts/uninstall-mac.sh`.
 
+## Mac app
+
+`ClaudeHub.app` opens the dashboard in its own window, with a Dock icon and ⌘R to reload.
+It's only a window onto the agent at http://127.0.0.1:4317, so the agent still has to be running.
+If it isn't, the app shows how to start it and keeps retrying.
+
+```bash
+./scripts/build-mac-app.sh --install   # builds build/ClaudeHub.app, copies it to ~/Applications
+open ~/Applications/ClaudeHub.app
+```
+
+It needs Xcode or the Command Line Tools (`swiftc`); the sources are in `mac/`. To point it at
+another address, for example the Mac Mini over Tailscale:
+
+```bash
+defaults write com.claudehub.app url http://mac-mini:4317
+defaults delete com.claudehub.app url   # back to 127.0.0.1:4317
+```
+
+Links to GitHub and other sites open in your default browser.
+
 ## Open it from other devices
 
 The agent only listens on the Mac itself by default. To reach it from your phone, use Tailscale
@@ -68,20 +89,48 @@ proposes changes), *Edit files* (may edit files, but shell commands that need ap
 denied), *Auto* (Claude Code's auto mode, which can also commit and push). Each run keeps its
 session, so you can continue it.
 
-There is no cloud mode: `claude --cloud` only works from an interactive terminal, so the agent
-can't start one. Start Claude Code on the web sessions at claude.ai/code instead.
+Any of your GitHub repos can be picked, not just the ones on the Mac: a run on a repo that isn't
+cloned yet clones it into the projects folder first.
+
+*On the web* doesn't run anything on the Mac: it copies the prompt and opens claude.ai/code, where
+you pick the repo and paste. The agent can't start those sessions itself, because `claude --cloud`
+only works from an interactive terminal.
+
+## Next edits
+
+The Overview's *Next edits* card is Claude reading your five most recently active projects (latest
+commits and PRs from GitHub, README, CLAUDE.md, file list, plus uncommitted work for repos on the
+Mac) and proposing one or two concrete edits for each, with a ready-to-run prompt. It refreshes on
+its own after a GitHub sync when that recent activity changed (at most every 20 minutes), or with
+*Refresh*. Each run is one Sonnet call on your subscription. *Run* starts it on the Mac; the globe
+button opens it on the web instead. Below it, *Needs attention* lists rule-based chores
+(uncommitted changes, failing CI, PRs waiting, no CLAUDE.md).
 
 The agent removes `ANTHROPIC_API_KEY` from Claude's environment so your subscription is always
 used. If a launchd-started `claude` can't reach the Keychain login, run `claude setup-token`
 and reinstall with `export CLAUDE_CODE_OAUTH_TOKEN=...` set. The Settings page shows whether
 Claude is logged in.
 
-### Optional: drive the Mac Mini from the Claude app
+### Remote Control: start sessions on the Mac from the Claude app
 
 Claude Code's Remote Control lets you start and steer sessions on the Mac Mini from claude.ai/code
-or the Claude phone app, with ClaudeHub showing the overall picture. Run `claude` once in your
-projects folder, log in, trust the folder and accept the Remote Control prompt. Then run
-`claude remote-control --name "Mac Mini"` in a terminal that stays open.
+or the Claude phone app, with ClaudeHub showing the overall picture. Run it in the projects folder
+so every session can open, clone or create any project there (`~/Desktop/DEV/CLAUDE.md` tells
+those sessions how). Once, by hand, to answer its first-run questions (choose *same-dir*):
+
+```bash
+cd ~/Desktop/DEV && claude remote-control --name "Mac Mini"
+```
+
+Then press Ctrl+C and keep it running as a launchd service (`com.claudehub.remote-control`,
+errors in `~/.claudehub/remote-control.log`):
+
+```bash
+./scripts/install-remote-control.sh            # or: [folder] [name], --uninstall
+```
+
+Restarting the service (re-running the script, or `launchctl kickstart`) ends the sessions that
+are running at that moment.
 
 ## Usage
 
