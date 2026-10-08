@@ -268,11 +268,9 @@ grant execute on function claudehub.agent_push_job(text, jsonb, jsonb) to anon, 
 -- Realtime for the dashboard (RLS applies) -----------------------------------
 alter publication supabase_realtime add table claudehub.snapshots, claudehub.commands, claudehub.jobs, claudehub.job_events;
 
--- Housekeeping: finished commands after 7 days, runs after 60 days ------------
-select cron.schedule('claudehub-cleanup', '17 4 * * *', $$
-  delete from claudehub.commands where created_at < now() - interval '7 days';
-  delete from claudehub.jobs where updated_at < now() - interval '60 days';
-$$);
+-- Housekeeping is done by the Mac agent calling agent_cleanup() once a day
+-- (scheduling it with pg_cron timed out on this project). Not applied yet:
+-- see 20261008230000_claudehub_agent_cleanup.sql.
 
 -- Expose the schema to the API, keeping the existing ones --------------------
 alter role authenticator set pgrst.db_schemas = 'public, graphql_public, betting, claudehub';

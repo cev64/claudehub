@@ -100,3 +100,11 @@ the React dashboard, `shared/types.ts` is the API contract, and `docs/` holds th
 (`open -a "Visual Studio Code"`, Cursor, Zed…), refresh interval and default model. Environment
 overrides: `PROJECTS_DIR`, `PORT`, `HOST`, `CLAUDEHUB_TOKEN`, `GITHUB_TOKEN`, `CLAUDE_BIN`,
 `CLAUDEHUB_HOME`.
+
+## Status
+
+- Works now: the Mac agent (scanning, GitHub sync, Claude runs, new projects, launchd) and the
+  dashboard, served by the agent at http://localhost:4317.
+- Supabase relay: the `claudehub` schema exists in the Budget project
+  (`supabase/migrations/`), but the agent and dashboard don't use it yet. Until then, reach the
+  dashboard from other devices with Tailscale.
