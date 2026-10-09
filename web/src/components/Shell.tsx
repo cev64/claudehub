@@ -91,11 +91,13 @@ export function BottomNav({ screen }: { screen: Screen }) {
 }
 
 export function TopBar({
-  title, condensed, updatedAt, scanning, onRefresh, now,
+  title, condensed, updatedAt, note, scanning, onRefresh, now,
 }: {
   title: string;
   condensed: boolean;
   updatedAt: string | null;
+  /** Replaces "Updated …", e.g. "Sample data" in the hosted build. */
+  note?: string | null;
   scanning: boolean;
   onRefresh: () => void;
   now: number;
@@ -106,7 +108,7 @@ export function TopBar({
         <div className="topbar-title" aria-hidden={!condensed}>{title}</div>
         <div className="topbar-actions">
           <span className="updated" aria-live="polite">
-            {scanning ? 'Updating' : updatedAt ? `Updated ${relTime(updatedAt, now)}` : ''}
+            {note ?? (scanning ? 'Updating' : updatedAt ? `Updated ${relTime(updatedAt, now)}` : '')}
           </span>
           <button type="button" className="icon-btn" onClick={onRefresh} disabled={scanning} aria-label="Refresh">
             <RefreshCw {...ICON} className={scanning ? 'spin' : undefined} />

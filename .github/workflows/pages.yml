@@ -1,0 +1,48 @@
+# Builds the web app and publishes it to GitHub Pages (https://cev64.github.io/claudehub/).
+# The Pages copy has no agent behind it, so it is built with VITE_HOSTED=1 and shows sample data.
+# Needs Settings → Pages → Source set to "GitHub Actions" (deploying from a branch serves the
+# README through Jekyll instead of the app).
+name: Pages
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # Relative base: the site lives under /claudehub/ and the app uses hash routes.
+      - run: npx vite build --base ./
+        env:
+          VITE_HOSTED: '1'
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
+
+  deploy:
+    needs: build
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
