@@ -4,7 +4,10 @@ import type {
   ProjectDetail, PullRequest, Settings, Suggestion, Usage,
 } from '../../shared/types';
 
-export const MOCK = typeof location !== 'undefined' && new URLSearchParams(location.search).get('mock') === '1';
+/** The GitHub Pages build: a static copy with no agent behind it, so it always shows sample data. */
+export const HOSTED = import.meta.env.VITE_HOSTED === '1';
+
+export const MOCK = HOSTED || (typeof location !== 'undefined' && new URLSearchParams(location.search).get('mock') === '1');
 
 const TOKEN_KEY = 'claudehub.token';
 

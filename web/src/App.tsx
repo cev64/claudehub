@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { NewProjectResult } from '../../shared/types';
-import { api, ApiError, MOCK, UNAUTHORIZED_EVENT } from './api';
+import { api, ApiError, HOSTED, MOCK, UNAUTHORIZED_EVENT } from './api';
 import { bumpData, navigate, useNow, useResource, useRoute, type Screen } from './hooks';
 import { Backdrop, BottomNav, Rail, TopBar } from './components/Shell';
 import { Toasts, toast } from './components/Toasts';
@@ -108,6 +108,7 @@ export function App() {
           title={TITLES[s]}
           condensed={condensed}
           updatedAt={health.data?.lastScanAt ?? null}
+          note={HOSTED ? 'Sample data' : null}
           scanning={scanning}
           onRefresh={refresh}
           now={now}
@@ -119,7 +120,11 @@ export function App() {
           {s === 'claude' && <ClaudeScreen route={route} settings={settings.data} />}
           {s === 'usage' && <UsageScreen />}
           {s === 'settings' && <SettingsScreen settings={settings} health={health} />}
-          {MOCK && <p className="meta" style={{ textAlign: 'center', margin: '24px 0 0' }}>Sample data</p>}
+          {MOCK && (
+            <p className="meta" style={{ textAlign: 'center', margin: '24px 0 0' }}>
+              {HOSTED ? 'Sample data. Live data comes from the agent on the Mac.' : 'Sample data'}
+            </p>
+          )}
         </main>
       </div>
       <BottomNav screen={s} />

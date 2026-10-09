@@ -82,6 +82,11 @@ export CLAUDEHUB_TOKEN="$(openssl rand -hex 24)"; echo "$CLAUDEHUB_TOKEN"
 
 Then open `http://<mac-mini-tailscale-name>:4317` and paste the token in Settings.
 
+https://cev64.github.io/claudehub/ is a static copy built by `.github/workflows/pages.yml`. It
+has no agent behind it, so it shows sample data until the Supabase relay exists (see
+`docs/NEXT_STEPS.md`). It needs Settings → Pages → Source set to **GitHub Actions**; deploying
+from a branch serves this README instead of the app.
+
 ## Claude runs
 
 Runs use `claude -p` inside the project folder on the Mac. Permissions: *Plan* (reads only and
